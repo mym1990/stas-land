@@ -1,0 +1,11 @@
+{
+  "title": "Sierra Summer",
+  "description": "Mountains, lakes, and desert light across the Eastern Sierra.",
+  "coverImage": "DSCF8417.jpg",
+  "photos": [
+    { "file": "DSCF8417.jpg", "caption": "Sierra Nevada ridgeline at golden hour" },
+    { "file": "DJI_0721-2.jpg", "caption": "Mountain waterfall, British Columbia" },
+    { "file": "DSCF8292.jpg", "caption": "Alpine lake, Eastern Sierra" },
+    { "file": "DSCF8003.jpg", "caption": "Alabama Hills under storm clouds" }
+  ]
+}

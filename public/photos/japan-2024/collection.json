@@ -1,0 +1,9 @@
+{
+  "title": "Japan, 2024",
+  "description": "Cherry blossoms, temples, and quiet streets.",
+  "coverImage": "DSC00324.jpg",
+  "photos": [
+    { "file": "DSC00324.jpg", "caption": "Cherry blossoms, Kyoto" },
+    { "file": "DSC00583.jpg", "caption": "Lanterns, Fushimi Inari" }
+  ]
+}
