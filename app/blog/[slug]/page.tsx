@@ -3,6 +3,7 @@ import Image from "next/image";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import { getAllPosts, getPostBySlug } from "@/lib/posts";
 import { mdxComponents } from "@/components/MdxComponents";
+import { Doorways } from "@/components/Doorways";
 
 export async function generateStaticParams() {
   const posts = getAllPosts();
@@ -40,6 +41,7 @@ export default async function BlogPostPage({
 }) {
   const { slug } = await params;
   const post = getPostBySlug(slug);
+  const allPosts = getAllPosts();
 
   return (
     <article className="pb-20">
@@ -97,6 +99,14 @@ export default async function BlogPostPage({
         <div className="prose prose-lg prose-blog max-w-none">
           <MDXRemote source={post.content} components={mdxComponents} />
         </div>
+
+        {post.connections && post.connections.length > 0 && (
+          <Doorways
+            connections={post.connections}
+            allPosts={allPosts}
+            currentSlug={slug}
+          />
+        )}
       </div>
     </article>
   );

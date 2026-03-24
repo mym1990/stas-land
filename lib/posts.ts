@@ -6,6 +6,11 @@ const POSTS_DIR = path.join(process.cwd(), "content/blog");
 
 export type PostType = "photo" | "technical" | "thought";
 
+export type PostConnection = {
+  slug: string;
+  label: string;
+};
+
 export type PostFrontmatter = {
   title: string;
   date: string;
@@ -15,6 +20,7 @@ export type PostFrontmatter = {
   featured?: boolean;
   type: PostType;
   pullQuote?: string;
+  connections?: PostConnection[];
 };
 
 export type Post = PostFrontmatter & {
