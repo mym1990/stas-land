@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "new-post": "node scripts/new-post.mjs"
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",
@@ -14,8 +15,7 @@
     "next": "16.2.1",
     "next-mdx-remote": "^6.0.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "yet-another-react-lightbox": "^3.29.2"
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

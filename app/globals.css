@@ -2,77 +2,105 @@
 @plugin "@tailwindcss/typography";
 
 :root {
-  --bg: #FDFBF7;
-  --bg-secondary: #F5F0E8;
-  --text: #1A1A1A;
-  --text-muted: #6B6560;
-  --accent: #8B7355;
-  --accent-hover: #6E5A43;
-  --border: #E8E2D9;
+  --bg: #ffffff;
+  --text: #111111;
+  --muted: #5e5e5e;
+  --rule: #ececec;
+  --accent: #1f45d6;
+  --sun: #e8833a;
 }
 
 @theme inline {
   --color-bg: var(--bg);
-  --color-bg-secondary: var(--bg-secondary);
   --color-text: var(--text);
-  --color-text-muted: var(--text-muted);
+  --color-muted: var(--muted);
+  --color-rule: var(--rule);
   --color-accent: var(--accent);
-  --color-accent-hover: var(--accent-hover);
-  --color-border: var(--border);
-  --font-sans: var(--font-inter);
-  --font-serif: var(--font-playfair);
-  --font-caption: var(--font-cormorant);
+  --font-sans: var(--font-instrument), system-ui, sans-serif;
 }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-instrument), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Photo treatment */
-.photo-card {
-  border-radius: 2px;
-  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+a {
+  transition: color 0.15s ease;
 }
 
-.photo-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+a:hover {
+  color: var(--accent);
 }
 
-.photo-card img {
-  filter: contrast(0.97) saturate(0.95);
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
-/* Prose overrides for blog posts */
-.prose-blog {
-  --tw-prose-body: var(--text);
+/* Long-form writing */
+.prose-journal {
+  --tw-prose-body: #2a2a2a;
   --tw-prose-headings: var(--text);
-  --tw-prose-links: var(--accent);
+  --tw-prose-links: var(--text);
   --tw-prose-bold: var(--text);
-  --tw-prose-quotes: var(--text-muted);
-  --tw-prose-quote-borders: var(--border);
-  --tw-prose-counters: var(--text-muted);
-  --tw-prose-bullets: var(--text-muted);
-  --tw-prose-captions: var(--text-muted);
+  --tw-prose-quotes: var(--muted);
+  --tw-prose-quote-borders: var(--rule);
+  --tw-prose-counters: var(--muted);
+  --tw-prose-bullets: var(--muted);
+  --tw-prose-hr: var(--rule);
+  --tw-prose-captions: var(--muted);
+  --tw-prose-code: var(--text);
 }
 
-.prose-blog h1,
-.prose-blog h2,
-.prose-blog h3 {
-  font-family: var(--font-serif), Georgia, serif;
+.prose-journal :where(h2, h3) {
+  font-weight: 500;
+  letter-spacing: -0.015em;
 }
 
-.prose-blog blockquote {
-  font-family: var(--font-caption), Georgia, serif;
-  font-style: italic;
-  border-left-color: var(--accent);
+.prose-journal :where(a) {
+  text-decoration-color: var(--rule);
+  text-underline-offset: 3px;
 }
 
-/* Smooth scrolling */
-html {
-  scroll-behavior: smooth;
+.prose-journal :where(a):hover {
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+
+.prose-journal :where(blockquote) {
+  font-style: normal;
+  font-weight: 400;
+  border-left-width: 2px;
+}
+
+.prose-journal :where(blockquote p:first-of-type)::before,
+.prose-journal :where(blockquote p:last-of-type)::after {
+  content: none;
+}
+
+/* Photos inside a post break out of the 640px text column to the full 880px */
+.post-figure {
+  width: min(880px, calc(100vw - 2.5rem));
+  margin-left: 50%;
+  transform: translateX(-50%);
+}
+
+@media (min-width: 640px) {
+  .post-figure {
+    width: min(880px, calc(100vw - 5rem));
+  }
+}
+
+.prose-journal :where(code)::before,
+.prose-journal :where(code)::after {
+  content: none;
+}
+
+.prose-journal :where(code) {
+  font-weight: 400;
+  background: #f4f4f4;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
 }

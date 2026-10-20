@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
-import { getAllCollectionSlugs, getCollection } from "@/lib/collections";
-import { PhotoEssay } from "@/components/PhotoEssay";
 import { notFound } from "next/navigation";
+import { getAllCollectionSlugs, getCollection } from "@/lib/collections";
 
-export async function generateStaticParams() {
-  const slugs = getAllCollectionSlugs();
-  return slugs.map((slug) => ({ slug }));
+export function generateStaticParams() {
+  return getAllCollectionSlugs().map((slug) => ({ slug }));
 }
 
 export async function generateMetadata({
@@ -19,7 +18,8 @@ export async function generateMetadata({
   if (!collection) return {};
   return {
     title: collection.title,
-    description: collection.description || `${collection.title} — photo collection`,
+    description: collection.description || `${collection.title}: photographs`,
+    openGraph: { images: [collection.coverImage] },
   };
 }
 
@@ -33,40 +33,39 @@ export default async function CollectionPage({
   if (!collection) notFound();
 
   return (
-    <article>
-      {/* Collection header */}
-      <header className="max-w-5xl mx-auto px-6 pt-16 pb-12">
-        <Link
-          href="/gallery"
-          className="text-sm uppercase tracking-widest text-text-muted hover:text-accent transition-colors"
-        >
-          &larr; All collections
+    <article className="mt-12 pb-32">
+      <header className="mb-12 max-w-[640px]">
+        <Link href="/gallery" className="text-sm text-muted">
+          ← Photos
         </Link>
-        <h1 className="font-serif text-4xl sm:text-6xl mt-6">
+        <h1 className="mt-6 text-[40px] leading-[1.1] font-medium tracking-[-0.03em]">
           {collection.title}
         </h1>
         {collection.description && (
-          <p className="mt-4 text-lg text-text-muted max-w-xl">
-            {collection.description}
-          </p>
+          <p className="mt-3 text-[17px] leading-relaxed text-muted">{collection.description}</p>
         )}
-        <p className="mt-3 text-sm text-text-muted">
-          {collection.photoCount} photograph{collection.photoCount !== 1 ? "s" : ""}
-        </p>
       </header>
 
-      {/* Photo essay */}
-      <PhotoEssay photos={collection.photos} />
-
-      {/* Back to gallery */}
-      <footer className="max-w-5xl mx-auto px-6 py-20 text-center">
-        <Link
-          href="/gallery"
-          className="text-sm uppercase tracking-widest text-accent hover:text-accent-hover transition-colors"
-        >
-          &larr; Back to all collections
-        </Link>
-      </footer>
+      <div className="flex flex-col gap-20">
+        {collection.photos.map((photo, i) => (
+          <figure key={photo.src}>
+            <Image
+              src={photo.src}
+              alt={photo.caption ?? ""}
+              width={photo.width}
+              height={photo.height}
+              sizes="(max-width: 960px) 100vw, 880px"
+              {...(i === 0 ? { loading: "eager" as const, fetchPriority: "high" as const } : {})}
+              className="mx-auto h-auto max-h-[85vh] w-auto max-w-full"
+            />
+            {photo.caption && (
+              <figcaption className="pt-3 text-center text-[13px] text-muted">
+                {photo.caption}
+              </figcaption>
+            )}
+          </figure>
+        ))}
+      </div>
     </article>
   );
 }

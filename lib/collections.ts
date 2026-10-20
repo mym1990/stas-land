@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { getImageSize } from "./images";
 
 const PHOTOS_DIR = path.join(process.cwd(), "public/photos");
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".avif"];
@@ -43,42 +44,7 @@ function getImageDimensions(filePath: string): {
   width: number;
   height: number;
 } {
-  // Default dimensions — will be overridden by next/image at runtime
-  // For proper aspect ratios, we read dimensions via sharp at build time
-  try {
-    // Quick dimension read from JPEG header
-    const buf = fs.readFileSync(filePath);
-    const dims = getJpegDimensions(buf);
-    if (dims) return dims;
-  } catch {
-    // fall through
-  }
-  return { width: 1600, height: 1067 };
-}
-
-function getJpegDimensions(
-  buf: Buffer
-): { width: number; height: number } | null {
-  if (buf[0] !== 0xff || buf[1] !== 0xd8) return null;
-  let offset = 2;
-  while (offset < buf.length) {
-    if (buf[offset] !== 0xff) return null;
-    const marker = buf[offset + 1];
-    // SOF markers (SOF0-SOF3, SOF5-SOF7, SOF9-SOF11, SOF13-SOF15)
-    if (
-      (marker >= 0xc0 && marker <= 0xc3) ||
-      (marker >= 0xc5 && marker <= 0xc7) ||
-      (marker >= 0xc9 && marker <= 0xcb) ||
-      (marker >= 0xcd && marker <= 0xcf)
-    ) {
-      const height = buf.readUInt16BE(offset + 5);
-      const width = buf.readUInt16BE(offset + 7);
-      return { width, height };
-    }
-    const segmentLength = buf.readUInt16BE(offset + 2);
-    offset += 2 + segmentLength;
-  }
-  return null;
+  return getImageSize(filePath) ?? { width: 1600, height: 1067 };
 }
 
 export function getAllCollections(): Collection[] {
