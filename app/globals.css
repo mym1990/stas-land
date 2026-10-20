@@ -104,3 +104,10 @@ a:hover {
   padding: 0.1em 0.35em;
   border-radius: 4px;
 }
+
+/* Tables in posts can be wider than a phone screen */
+.prose-journal :where(table) {
+  display: block;
+  overflow-x: auto;
+  font-size: 0.85em;
+}

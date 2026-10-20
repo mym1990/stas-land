@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
+import remarkGfm from "remark-gfm";
 import { formatDate, getAllPosts, getPostBySlug } from "@/lib/posts";
 import { getPublicImageSize } from "@/lib/images";
 import { mdxComponents } from "@/components/MdxComponents";
@@ -67,7 +68,11 @@ export default async function PostPage({
       )}
 
       <div className="prose prose-lg prose-journal mx-auto max-w-[640px]">
-        <MDXRemote source={post.content} components={mdxComponents} />
+        <MDXRemote
+          source={post.content}
+          components={mdxComponents}
+          options={{ mdxOptions: { remarkPlugins: [remarkGfm] } }}
+        />
       </div>
 
       <footer className="mx-auto mt-20 max-w-[640px] border-t border-rule pt-6">
