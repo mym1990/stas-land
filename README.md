@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# stas.land
 
-## Getting Started
+Photographs and a journal. Next.js, with posts as markdown files and photos as plain folders. No database, no CMS.
 
-First, run the development server:
+## Run it locally
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Write a post
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run new-post "Morning at Mono Lake"
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+That creates `content/blog/morning-at-mono-lake.mdx`:
 
-## Learn More
+```mdx
+---
+title: "Morning at Mono Lake"
+date: 2026-10-20
+draft: true
+---
 
-To learn more about Next.js, take a look at the following resources:
+Write in plain markdown.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+![Tufa towers before sunrise](/images/DSC01234.jpg)
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Only `title` and `date` are required.**
+- `draft: true` shows the post when you run it locally but hides it on the live site. Delete the line to publish.
+- **Photos in a post:** put the file in `public/images/` (or reuse one from a collection under `public/photos/`), then use normal markdown image syntax. The text in `[ ]` becomes the caption. Photos automatically run wider than the text.
+- Optional extras in the frontmatter:
+  - `description: ...` — one line used for link previews
+  - `cover: /photos/...jpg` — a big photo above the post
 
-## Deploy on Vercel
+To publish: commit and push to `main`; Vercel deploys it.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Add a photo collection
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Make a folder: `public/photos/<collection-name>/`
+2. Drop the photos in. Export them around 2400px on the long edge; the site resizes for each screen.
+3. That's it. The collection shows up under **Photos**, titled from the folder name. (Every folder in `public/photos/` becomes a collection, so keep post-only images in `public/images/`.)
+
+To set a nicer title, a description, the order or captions, add a `collection.json` in the folder:
+
+```json
+{
+  "title": "Japan, 2024",
+  "description": "Cherry blossoms, temples, and quiet streets.",
+  "coverImage": "DSC00324.jpg",
+  "photos": [
+    { "file": "DSC00324.jpg", "caption": "Cherry blossoms, Kyoto" },
+    { "file": "DSC00583.jpg", "caption": "Lanterns, Fushimi Inari" }
+  ]
+}
+```
+
+If `photos` is listed, only those files show, in that order.
+
+## Site settings
+
+`lib/constants.ts` holds the tagline, the home page photo, your contact email (empty hides the footer link) and the menu.
