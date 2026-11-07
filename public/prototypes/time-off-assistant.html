@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Concept prototype: a Time Off Assistant that plans and announces PTO from one chat. CS 6750 (HCI) project by Stas.">
+<title>Time Off Assistant</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: a work-app window. Left rail, conversation in the middle, the editable plan beside it.
+   The conversation and the plan stay in sync: typing changes the plan, editing the plan is noted in the chat. */
+:root{
+  /* Layout: collaboration-app shell. App bar | chat list | conversation | plan side pane. */
+  --bg:#f5f5f5; --surface:#ffffff; --surface-2:#fafafa; --chrome:#ebebeb; --line:#e0e0e0; --fg:#242424; --muted:#616161;
+  --accent:#5b5fc7; --accent-ink:#ffffff; --accent-soft:#e8ebfa; --accent-hover:#4f52b2;
+  --away:#e3a21a; --away-soft:#fdf3dd; --away-ink:#6a4a06;
+  --warn-bg:#fff9f5; --warn-line:#f4bfab; --ok:#107c10; --ok-soft:#e7f4e4;
+  --me-bubble:#e8ebfa; --me-ink:#242424; --bot-bubble:#ffffff; --present:#6bb700;
+  --font-display:"Segoe UI Variable Display","Segoe UI","Open Sans",system-ui,sans-serif;
+  --font-body:"Segoe UI Variable Text","Segoe UI","Open Sans",system-ui,-apple-system,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#1f1f1f; --surface:#292929; --surface-2:#2e2e2e; --chrome:#141414; --line:#3d3d3d; --fg:#ffffff; --muted:#adadad;
+  --accent:#7f85f5; --accent-ink:#141414; --accent-soft:#2f2f4a; --accent-hover:#9299f7;
+  --away:#f2c661; --away-soft:#3b3020; --away-ink:#f8dfa1;
+  --warn-bg:#3b2a23; --warn-line:#8a4f37; --ok:#54b054; --ok-soft:#1f3320;
+  --me-bubble:#2f2f4a; --me-ink:#ffffff; --bot-bubble:#292929; --present:#92c353; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#1f1f1f; --surface:#292929; --surface-2:#2e2e2e; --chrome:#141414; --line:#3d3d3d; --fg:#ffffff; --muted:#adadad;
+  --accent:#7f85f5; --accent-ink:#141414; --accent-soft:#2f2f4a; --accent-hover:#9299f7;
+  --away:#f2c661; --away-soft:#3b3020; --away-ink:#f8dfa1;
+  --warn-bg:#3b2a23; --warn-line:#8a4f37; --ok:#54b054; --ok-soft:#1f3320;
+  --me-bubble:#2f2f4a; --me-ink:#ffffff; --bot-bubble:#292929; --present:#92c353; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{margin:0}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.window{max-width:1440px;margin:0 auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;
+  display:grid;grid-template-columns:68px 300px minmax(0,1fr) minmax(0,420px);grid-template-rows:48px minmax(0,1fr);height:calc(100vh - 32px);min-height:560px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.topbar{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 12px;background:var(--chrome)}
+.topbar .nav{display:flex;gap:2px;color:var(--muted)}
+.topbar .nav span{width:28px;height:28px;display:grid;place-items:center;border-radius:4px}
+.proto{font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-soft);border-radius:4px;padding:2px 6px}
+.topbar .app{font-weight:600;font-size:14px}
+.topbar .search{flex:1;max-width:560px;margin-inline:auto;border:1px solid var(--line);border-radius:4px;padding:5px 10px;color:var(--muted);font-size:13px;background:var(--surface);display:flex;gap:8px;align-items:center}
+.topbar .who{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.avatar{position:relative;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;background:var(--accent-soft);color:var(--accent);flex:none}
+.ghost{border:1px solid var(--line);background:var(--surface);border-radius:4px;padding:4px 10px;font-size:12.5px}
+.presence{position:absolute;right:-1px;bottom:-1px;width:10px;height:10px;border-radius:50%;background:var(--present);border:2px solid var(--chrome)}
+.presence.away{background:var(--away)}
+
+.rail{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;background:var(--chrome)}
+.rail button{position:relative;width:64px;border:0;background:none;border-radius:4px;padding:7px 0 6px;font-size:10.5px;color:var(--muted);display:grid;justify-items:center;gap:3px}
+.rail button:hover{color:var(--accent)}
+.rail button svg{width:22px;height:22px}
+.rail .badge{position:absolute;top:4px;right:14px;background:#c4314b;color:#fff;font-size:10px;font-weight:700;border-radius:8px;padding:0 5px;line-height:15px}
+.rail button[aria-current="page"]{color:var(--accent);font-weight:600}
+.rail button[aria-current="page"]::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:2px;background:var(--accent)}
+.chatlist{background:var(--surface-2);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;border-top-left-radius:8px}
+.chatlist-head{display:flex;justify-content:space-between;align-items:center;padding:14px 16px 8px}
+.chatlist-head h2{font-size:18px;font-weight:700;margin:0}
+.filters{display:flex;gap:6px;padding:0 16px 8px}
+.filters span{font-size:12px;border:1px solid var(--line);border-radius:12px;padding:2px 10px;color:var(--muted)}
+.sec{font-size:12px;color:var(--muted);padding:8px 16px 4px;font-weight:600}
+.ci{display:flex;gap:10px;align-items:center;padding:8px 16px;margin:0 6px;border-radius:4px;font-size:13.5px}
+.ci .txt{min-width:0;flex:1}
+.ci .txt b{font-weight:600;display:block}
+.ci small{color:var(--muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ci time{font-size:11.5px;color:var(--muted);align-self:flex-start;margin-top:2px}
+.ci.active{background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.ci .avatar{width:32px;height:32px}
+.appicon{width:32px;height:32px;border-radius:6px;background:var(--away);display:grid;place-items:center;color:#3b2706;flex:none}
+
+/* chat */
+.chat{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg)}
+.chat-head{display:flex;align-items:center;gap:10px;padding:0 18px;height:56px;border-bottom:1px solid var(--line);background:var(--surface)}
+.ctabs{display:flex;gap:16px;margin-left:14px;align-self:stretch}
+.ctabs span{display:flex;align-items:center;font-size:13.5px;color:var(--muted);border-bottom:2px solid transparent}
+.ctabs span.on{color:var(--fg);font-weight:600;border-color:var(--accent)}
+.chat-head h1{font-size:16px;margin:0;font-weight:700;white-space:nowrap}
+.chat-head .sub{display:none}
+.bot-mark{width:32px;height:32px;border-radius:6px;background:var(--away);display:grid;place-items:center;color:#3b2706;flex:none}
+.log{flex:1;overflow-y:auto;padding:18px 24px;display:flex;flex-direction:column;gap:14px}
+.mwrap{display:flex;gap:10px;align-items:flex-start;max-width:min(600px,94%)}
+.mwrap .meta{font-size:12px;color:var(--muted);margin-bottom:3px}
+.mwrap .meta b{color:var(--fg);font-weight:600;margin-right:8px}
+.mwrap.me{align-self:flex-end;flex-direction:row-reverse}
+.mwrap.me .meta{text-align:right}
+.msg{padding:9px 13px;border-radius:6px;background:var(--bot-bubble);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.msg.me{background:var(--me-bubble);color:var(--me-ink)}
+.msg.bot{}
+.card{border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-top:8px;background:var(--surface-2)}
+.card .ct{font-weight:700;margin-bottom:4px}
+.msg.note{align-self:center;background:none;box-shadow:none;color:var(--muted);font-size:12.5px;padding:2px 8px}
+.msg ul{margin:6px 0 2px;padding-left:18px}
+.msg li{margin:2px 0}
+.msg .lead{font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:8px;padding-left:42px}
+.chip{border:1px solid var(--line);color:var(--fg);background:var(--surface);border-radius:4px;padding:5px 12px;font-size:13px;font-weight:600}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.composer{display:flex;gap:8px;margin:0 24px 18px;padding:6px 6px 6px 4px;background:var(--surface);border-radius:4px;border-bottom:2px solid var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.composer input{flex:1;min-width:0;border:0;padding:8px 10px;background:transparent;outline:none}
+.composer .send{border:0;background:none;color:var(--accent);width:36px;border-radius:4px;display:grid;place-items:center}
+.composer .send:hover{background:var(--accent-soft)}
+.btn{border:0;border-radius:4px;padding:7px 14px;font-weight:600;font-size:13.5px;background:var(--accent);color:var(--accent-ink)}
+.btn:hover{background:var(--accent-hover)}
+.btn.secondary{background:var(--surface);color:var(--fg);border:1px solid var(--line)}
+.btn.secondary:hover{background:var(--surface-2)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.typing{display:inline-flex;gap:4px}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:b 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes b{0%,60%,100%{opacity:.25}30%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.typing i{animation:none}.flash{animation:none!important}}
+
+/* plan panel */
+.plan{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--surface);border-left:1px solid var(--line)}
+.plan-head{padding:14px 18px 10px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.plan-title{font-size:20px;font-weight:700;margin:2px 0 8px;text-wrap:balance}
+.dates{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
+.dates label{display:grid;gap:2px;font-size:12px;color:var(--muted)}
+.dates input{border:1px solid var(--line);border-radius:8px;padding:5px 8px;background:var(--surface);font-family:var(--font-mono);font-size:13px}
+.daycount{font-size:13px;color:var(--muted);padding-bottom:6px}
+.tabs{display:flex;gap:4px;margin-top:12px}
+.tabs button{border:0;border-bottom:2px solid transparent;background:none;padding:6px 2px;margin-right:14px;border-radius:0;font-weight:600;color:var(--muted)}
+.tabs button[aria-selected="true"]{color:var(--fg);border-color:var(--accent)}
+.plan-body{flex:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:18px}
+.group h3{font-size:13px;margin:0 0 8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.group h3 span{font-weight:500;color:var(--muted);font-size:12px}
+.row{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.row .txt{flex:1;min-width:0}
+.row .txt b{font-weight:600}
+.row .txt small{display:block;color:var(--muted);font-size:12.5px}
+.switch{appearance:none;width:36px;height:21px;border-radius:999px;background:var(--line);position:relative;flex:none;margin-top:1px;transition:background .15s}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:15px;height:15px;border-radius:50%;background:var(--surface);transition:left .15s}
+.switch:checked{background:var(--accent)}
+.switch{border:1px solid var(--muted);background:transparent}
+.switch::after{background:var(--muted)}
+.switch:checked{border-color:var(--accent)}
+.switch:checked::after{background:var(--accent-ink)}
+.switch:checked::after{left:18px}
+.person{display:flex;align-items:center;gap:10px;padding:6px 0}
+.person input{width:17px;height:17px;accent-color:var(--accent);flex:none}
+.person .txt{flex:1;min-width:0}
+.person small{color:var(--muted);font-size:12.5px;display:block}
+.tag{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.tag.ext{border-color:var(--warn-line);background:var(--warn-bg);color:var(--away-ink)}
+.callout{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:var(--r);padding:10px 12px;font-size:13.5px;display:grid;gap:6px}
+.callout .acts{display:flex;gap:8px;flex-wrap:wrap}
+.mini{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:3px 9px;font-size:12.5px;font-weight:600}
+.meetings{font-size:13px;color:var(--muted);margin:4px 0 0;padding-left:16px}
+.field{display:grid;gap:4px;font-size:13px}
+.field select,.field textarea{border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--surface)}
+.field textarea{min-height:120px;resize:vertical;line-height:1.45}
+.radios{display:grid;gap:4px;font-size:14px}
+.radios label{display:flex;gap:8px;align-items:center}
+.radios input{accent-color:var(--accent)}
+.plan-foot{border-top:1px solid var(--line);padding:12px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.plan-foot .summary{flex:1;min-width:150px;font-size:12.5px;color:var(--muted)}
+.empty{margin:auto;text-align:center;color:var(--muted);max-width:300px;display:grid;gap:10px;justify-items:center;padding:30px 10px}
+.empty svg{width:56px;height:56px;color:var(--away)}
+.flash{animation:fl 1.4s ease-out}
+@keyframes fl{0%{background:var(--away-soft)}100%{background:transparent}}
+
+/* preview cards */
+.pv{border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.pv-h{font-size:12px;font-weight:600;color:var(--muted);padding:7px 11px;background:var(--surface-2);border-bottom:1px solid var(--line)}
+.pv-b{padding:11px;font-size:13.5px}
+.mail{white-space:pre-wrap;font-size:13.5px}
+.cal-banner{border-left:4px solid var(--away);background:var(--away-soft);color:var(--away-ink);border-radius:6px;padding:4px 8px;font-size:12.5px;font-weight:600}
+.cal-evt{border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:6px;padding:4px 8px;font-size:12.5px;margin-top:6px}
+.status{display:flex;align-items:center;gap:8px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--away);flex:none}
+
+/* done state */
+.done-list{display:grid;gap:2px}
+.done-list .row svg{color:var(--ok);flex:none;width:20px;height:20px;margin-top:1px}
+.okbar{background:var(--ok-soft);color:var(--ok);border-radius:var(--r);padding:10px 12px;font-weight:600}
+
+/* calendar view */
+.calview{grid-column:2/-1;background:var(--surface);display:flex;flex-direction:column;min-width:0;padding:16px 18px;gap:14px;overflow-y:auto}
+.calview h2{margin:0;font-size:18px;font-weight:700}
+.cal-pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:16px}
+.cal{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;min-width:0}
+.cal-title{padding:8px 12px;font-weight:600;font-size:14px;background:var(--surface-2);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px}
+.cal-scroll{overflow-x:auto}
+.cal-grid{display:grid;grid-template-columns:44px repeat(5,minmax(62px,1fr));min-width:360px;font-size:12px}
+.cal-grid .dh{padding:6px 4px;text-align:center;border-bottom:1px solid var(--line);font-weight:600;font-variant-numeric:tabular-nums}
+.cal-grid .allday{border-bottom:1px solid var(--line);padding:3px;min-height:28px}
+.cal-grid .t{color:var(--muted);font-family:var(--font-mono);font-size:10.5px;padding:2px 4px;border-top:1px dashed var(--line);height:40px}
+.cal-grid .c{border-top:1px dashed var(--line);border-left:1px solid var(--line);height:40px;padding:2px;position:relative}
+.ooo{background:repeating-linear-gradient(135deg,var(--away-soft) 0 7px,transparent 7px 14px)}
+.ev{border-radius:5px;padding:2px 5px;font-size:11px;background:var(--accent-soft);border-left:3px solid var(--accent);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ev.declined{text-decoration:line-through;opacity:.55}
+.legend{font-size:12.5px;color:var(--muted)}
+
+@media (max-width:1200px){
+  .window{grid-template-columns:68px minmax(0,1fr) minmax(0,400px)}
+  .chatlist{display:none}
+}
+@media (max-width:980px){
+  .window{grid-template-columns:68px minmax(0,1fr);grid-template-rows:48px;height:auto;min-height:calc(100vh - 32px)}
+  .plan{border-left:0}
+  .ctabs{display:none}
+  .rail{grid-row:2/4}
+  .log{max-height:60vh}
+  .plan{grid-column:2;border-top:1px solid var(--line)}
+  .chat{border-right:0;min-height:60vh}
+  .topbar .search{display:none}
+  .calview{grid-column:2}
+}
+@media (max-width:560px){
+  body{padding-block:0}
+  .window{grid-template-columns:minmax(0,1fr);border-radius:0;border-inline:0}
+  .rail{grid-row:auto}
+  .calview{grid-column:1}
+  .chips{padding-left:0}
+  .log{padding:14px}
+  .composer{margin:0 12px 12px}
+  .rail{flex-direction:row;justify-content:center;border-right:0;border-bottom:1px solid var(--line);padding:4px}
+  .plan,.calview{grid-column:1}
+}
+</style>
+</head>
+<body>
+
+<div class="window" id="app">
+  <header class="topbar">
+    <span class="nav" aria-hidden="true"><span>‹</span><span>›</span></span>
+    <span class="proto">Concept prototype</span>
+    <span class="search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>Search</span>
+    <span class="who"><button class="ghost" id="reset" title="Start the demo over">Reset demo</button><span class="avatar" id="me-av">AM<span class="presence" id="me-pres"></span></span></span>
+  </header>
+  <nav class="rail" aria-label="Apps">
+    <button tabindex="-1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5h4"/></svg><span class="badge">2</span>Activity</button>
+    <button id="nav-chat" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 5h16v11H8l-4 4z"/></svg>Chat</button>
+    <button tabindex="-1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="9" r="3.2"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5M16 6.5a3 3 0 0 1 0 5.6M18 14.8c1.3.7 2.1 2 2.5 4.2"/></svg>Teams</button>
+    <button id="nav-cal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Calendar</button>
+    <button tabindex="-1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6.5 4h3l1.5 4-2 1.5a10 10 0 0 0 5.5 5.5l1.5-2 4 1.5v3a2 2 0 0 1-2 2A15 15 0 0 1 4.5 6a2 2 0 0 1 2-2z"/></svg>Calls</button>
+    <button tabindex="-1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3.5h8l4 4V20.5H6z"/><path d="M14 3.5v4h4"/></svg>Files</button>
+  </nav>
+
+  <section class="chatlist" id="chatlist" aria-label="Chats">
+    <div class="chatlist-head"><h2>Chat</h2></div>
+    <div class="filters"><span>Unread</span><span>Chats</span><span>Meetings</span></div>
+    <div class="sec">Pinned</div>
+    <div class="ci active"><span class="appicon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="4"/><path d="M12 3v3M4.2 6.2l2 2M19.8 6.2l-2 2M2 13h3M19 13h3M4 20h16"/></svg></span><span class="txt"><b>Time Off Assistant</b><small>Plan your time off in one place</small></span><time>Now</time></div>
+    <div class="sec">Recent</div>
+    <div class="ci"><span class="avatar">PS<span class="presence"></span></span><span class="txt"><b>Priya Shah</b><small>Sounds good, enjoy the break!</small></span><time>4:12 PM</time></div>
+    <div class="ci"><span class="avatar">PA</span><span class="txt"><b>Project Atlas</b><small>Diego: deploy is green</small></span><time>3:40 PM</time></div>
+    <div class="ci"><span class="avatar">JL<span class="presence"></span></span><span class="txt"><b>Jordan Lee</b><small>You: can you take Friday's demo?</small></span><time>2:05 PM</time></div>
+    <div class="ci"><span class="avatar">CP<span class="presence away"></span></span><span class="txt"><b>Chris Park (External)</b><small>Thanks, see you Wednesday</small></span><time>Mon</time></div>
+    <div class="ci"><span class="avatar">MO</span><span class="txt"><b>Maya Okafor</b><small>Test plan attached</small></span><time>Mon</time></div>
+  </section>
+
+  <section class="chat" id="chat-pane" aria-label="Time Off Assistant chat">
+    <div class="chat-head">
+      <span class="bot-mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="4"/><path d="M12 3v3M4.2 6.2l2 2M19.8 6.2l-2 2M2 13h3M19 13h3M4 20h16"/></svg></span>
+      <h1>Time Off Assistant</h1><div class="sub"></div><div class="ctabs"><span class="on">Chat</span><span>Plan</span><span>About</span></div>
+    </div>
+    <div class="log" id="log" aria-live="polite"></div>
+    <form class="composer" id="composer" autocomplete="off">
+      <input id="say" placeholder="Type a message" aria-label="Message the assistant">
+      <button class="send" type="submit" aria-label="Send"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3.5 4.5l17 7.5-17 7.5 2.5-7.5zM6 12h7" stroke="currentColor" stroke-width="1.2"/></svg></button>
+    </form>
+  </section>
+
+  <aside class="plan" id="plan" aria-label="Time off plan"></aside>
+  <section class="calview" id="calview" hidden aria-label="Calendar view"></section>
+</div>
+
+<script>
+/* ---------- data ---------- */
+const ME = {name:"Alex Morgan", first:"Alex"};
+const DIRECTORY = [
+  {id:"priya", name:"Priya Shah", role:"Your manager", tag:"Manager", def:true},
+  {id:"jordan", name:"Jordan Lee", role:"Direct report", tag:"Report", def:true},
+  {id:"sam", name:"Sam Rivera", role:"Direct report", tag:"Report", def:true},
+  {id:"diego", name:"Diego Alvarez", role:"Project Atlas", tag:"Project", def:true},
+  {id:"emma", name:"Emma Clarke", role:"Project Atlas", tag:"Project", def:true},
+  {id:"lena", name:"Lena Novak", role:"Project Atlas", tag:"Project", def:true},
+  {id:"maya", name:"Maya Okafor", role:"QA", tag:"QA", def:false, why:"You told Maya about your last time off"},
+  {id:"chris", name:"Chris Park", role:"Client lead, Northwind", tag:"External", def:false, ext:true, why:"Has meetings with you while you're out"},
+  {id:"omar", name:"Omar Haddad", role:"Finance", tag:"Finance", def:false},
+];
+const MEETINGS = [ // recurring meetings by weekday (1=Mon)
+  {title:"Atlas standup", days:[1,2,3,4,5], h:9, with:["jordan","sam","diego","emma","lena"]},
+  {title:"1:1 with Priya", days:[2], h:11, with:["priya"]},
+  {title:"Northwind sync", days:[3], h:14, with:["chris"]},
+  {title:"Sprint review", days:[5], h:15, with:["priya","diego","emma","lena","maya"]},
+];
+const HOLIDAYS={"12-25":"Christmas Day","01-01":"New Year's Day","07-04":"Independence Day","11-26":"Thanksgiving"};
+const holidayOf=d=>HOLIDAYS[String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")];
+const MONTHS=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+const DOW=["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+
+/* ---------- state ---------- */
+let S, history=[];
+function fresh(){
+  return {view:"chat", tab:"plan", stage:"empty", start:null, end:null,
+    people:Object.fromEntries(DIRECTORY.map(p=>[p.id,p.def])),
+    blockCal:true, autoReply:true, declineNew:true, declineExisting:true, teamFree:true,
+    backup:"jordan", reach:"manager", msgEdited:false, message:"", dismissed:{}, flash:null};
+}
+function snapshot(){history.push(JSON.stringify(S)); if(history.length>30) history.shift();}
+
+/* ---------- dates ---------- */
+const today=()=>{const d=new Date(); d.setHours(12,0,0,0); return d;};
+const iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const parseIso=s=>{const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d,12);};
+const fmt=(d,o={weekday:"short",month:"short",day:"numeric"})=>d.toLocaleDateString("en-US",o);
+const addDays=(d,n)=>{const x=new Date(d); x.setDate(x.getDate()+n); return x;};
+function nextWorkday(d){let x=addDays(d,1); while([0,6].includes(x.getDay())) x=addDays(x,1); return x;}
+function workdays(a,b){let n=0; for(let x=new Date(a); x<=b; x=addDays(x,1)) if(![0,6].includes(x.getDay())&&!holidayOf(x)) n++; return n;}
+function holidaysIn(a,b){const h=[]; for(let x=new Date(a); x<=b; x=addDays(x,1)) if(![0,6].includes(x.getDay())&&holidayOf(x)) h.push(holidayOf(x)); return h;}
+const dayLine=(a,b)=>{const h=holidaysIn(a,b); return `${workdays(a,b)} workdays${h.length?` + ${h.length} holiday${h.length>1?"s":""}`:""}`;};
+function mkDate(mon,day,ref){ let y=ref.getFullYear(); let d=new Date(y,mon,day,12); if(d<addDays(ref,-1)) d=new Date(y+1,mon,day,12); return d;}
+
+function parseDates(text){
+  const t=text.toLowerCase().replace(/(\d)(st|nd|rd|th)\b/g,"$1");
+  const now=today(); const found=[];
+  const re=/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:\s*(?:-|–|to|through|thru|until)\s*(\d{1,2})\b(?!\s*(?:am|pm)))?/g;
+  let m;
+  while((m=re.exec(t))){ const mon=MONTHS.indexOf(m[1]); found.push(mkDate(mon,+m[2],now)); if(m[3]) found.push(mkDate(mon,+m[3],now)); }
+  if(found.length){ let s=found[0], e=found[found.length-1]; if(e<s) e=new Date(e.getFullYear()+1,e.getMonth(),e.getDate(),12); return {s,e}; }
+  if(/\btomorrow\b/.test(t)){const d=addDays(now,1); return {s:d,e:d};}
+  if(/\bnext week\b/.test(t)){let d=addDays(now,1); while(d.getDay()!==1) d=addDays(d,1); return {s:d,e:addDays(d,4)};}
+  const dm=t.match(/\b(?:next\s+|this\s+)?(monday|tuesday|wednesday|thursday|friday)\b/);
+  if(dm){let d=addDays(now,1); while(DOW[d.getDay()]!==dm[1]) d=addDays(d,1); return {s:d,e:d};}
+  return null;
+}
+
+/* ---------- derived ---------- */
+const P=id=>DIRECTORY.find(p=>p.id===id);
+const included=()=>DIRECTORY.filter(p=>S.people[p.id]);
+function affected(){
+  if(!S.start) return [];
+  const out=[]; const a=parseIso(S.start), b=parseIso(S.end);
+  for(let x=new Date(a); x<=b; x=addDays(x,1)) for(const mt of MEETINGS) if(mt.days.includes(x.getDay())&&!holidayOf(x)) out.push({...mt,date:new Date(x)});
+  return out;
+}
+function suggestions(){
+  const aff=affected(); const s=[];
+  for(const p of DIRECTORY){
+    if(S.people[p.id]||S.dismissed[p.id]) continue;
+    const n=aff.filter(m=>m.with.includes(p.id)).length;
+    if(n) s.push({p, why:`${n} meeting${n>1?"s":""} with you while you're out`});
+    else if(p.why && p.id==="maya") s.push({p, why:p.why});
+  }
+  return s;
+}
+function reachLine(){
+  const mgr=P("priya").name;
+  return {manager:`I won't be checking messages. For anything urgent, ${mgr} knows how to reach me.`,
+          urgent:"I'll check chat once a day for urgent issues only.",
+          nobody:"I won't be reachable while I'm away."}[S.reach];
+}
+function template(){
+  if(!S.start) return "";
+  const a=parseIso(S.start), b=parseIso(S.end), back=nextWorkday(b);
+  return `Hi,\n\nI'm out of office from ${fmt(a,{weekday:"long",month:"long",day:"numeric"})} through ${fmt(b,{weekday:"long",month:"long",day:"numeric"})}, and back on ${fmt(back,{weekday:"long",month:"long",day:"numeric"})}.\n\n${reachLine()} For Project Atlas questions, please contact ${P(S.backup).name}.\n\nThanks,\n${ME.first}`;
+}
+function syncMessage(){ if(!S.msgEdited) S.message=template(); }
+function actions(){
+  const a=[];
+  if(S.blockCal) a.push("Mark your calendar Out of Office");
+  if(S.autoReply) a.push("Turn on your email auto-reply and away status");
+  if(S.declineExisting && affected().length) a.push(`Decline ${affected().length} meetings while you're out`);
+  if(S.declineNew) a.push("Decline new invitations while you're out");
+  if(S.teamFree && included().length) a.push(`Tell ${included().length} people (shows as Free, doesn't block their calendars)`);
+  return a;
+}
+
+/* ---------- chat ---------- */
+const log=document.getElementById("log");
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const now=()=>new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
+const BOTAV=`<span class="appicon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="4"/><path d="M12 3v3M4.2 6.2l2 2M19.8 6.2l-2 2M2 13h3M19 13h3M4 20h16"/></svg></span>`;
+function add(role, html, extra){
+  const d=document.createElement("div"); d.className="msg "+role; d.innerHTML=html; if(extra) d.append(extra);
+  if(role==="note"){ log.append(d); log.scrollTop=log.scrollHeight; return d; }
+  const w=document.createElement("div"); w.className="mwrap "+role;
+  const col=document.createElement("div"); col.style.minWidth="0";
+  col.innerHTML=role==="me"?`<div class="meta">${now()}</div>`:`<div class="meta"><b>Time Off Assistant</b>${now()}</div>`;
+  col.append(d); if(role!=="me") w.insertAdjacentHTML("beforeend",BOTAV); w.append(col);
+  log.append(w); log.scrollTop=log.scrollHeight; return d; }
+function bot(html, delay=550){
+  const t=add("bot",'<span class="typing" aria-label="typing"><i></i><i></i><i></i></span>');
+  return new Promise(r=>setTimeout(()=>{t.innerHTML=html; log.scrollTop=log.scrollHeight; r(t);},delay));
+}
+function chipRow(list){ const w=document.createElement("div"); w.className="chips"; for(const [label,fn] of list){const b=document.createElement("button"); b.className="chip"; b.type="button"; b.textContent=label; b.onclick=fn; w.append(b);} return w; }
+
+function greet(){
+  log.innerHTML="";
+  add("bot",`<div class="lead">Hi ${ME.first}. Tell me when you'll be out and I'll set everything up in one place:</div>
+    <ul><li>block your calendar and turn on your auto-reply</li><li>let your team know without blocking their calendars</li><li>name a backup and choose who can reach you</li></ul>
+    You'll see the full plan on the right, and you can edit any of it before anything is sent.`);
+  const d=add("note","Try one:"); d.style.alignSelf="flex-start";
+  const n=today(); const fri=(()=>{let d=addDays(n,1); while(d.getDay()!==5) d=addDays(d,1); return d;})();
+  log.append(chipRow([
+    ["I'm out Dec 21 through Jan 1",()=>userSays("I'm out Dec 21 through Jan 1")],
+    [`Taking off next Friday`,()=>userSays("Taking off next Friday")],
+    ["Out next week",()=>userSays("Out next week")],
+  ]));
+}
+
+async function userSays(text){
+  if(!text.trim()) return;
+  add("me",esc(text));
+  const t=text.toLowerCase();
+  if(S.stage==="sent" && !/\b(undo|cancel|change)\b/.test(t)){ await bot("Your time off is already set. Say <b>change dates</b> or <b>undo</b> if plans changed."); return; }
+
+  // confirm
+  if(/^(send|send it|confirm|looks good|yes|go ahead|do it)\b/.test(t.trim())){
+    if(S.stage==="draft") return confirmSend(); else return bot("Tell me your dates first, then I'll show you the plan.");
+  }
+  if(/\bundo\b/.test(t)){
+    if(S.stage==="sent") return undoAll();
+    if(history.length){ S=JSON.parse(history.pop()); render(); return bot("Undid the last change."); }
+    return bot("There's nothing to undo yet.");
+  }
+  if(/\bcancel\b/.test(t) && S.stage==="sent") return undoAll();
+
+  let changed=[];
+  const d=parseDates(text);
+  if(d){
+    snapshot();
+    const first=S.stage==="empty";
+    S.start=iso(d.s); S.end=iso(d.e);
+    if(S.stage==="sent") S.stage="draft";
+    S.stage="draft"; syncMessage(); S.flash="dates"; render();
+    if(first) return presentPlan();
+    changed.push(`dates are now ${fmt(d.s)} to ${fmt(d.e)}`);
+  }
+  // people
+  const names=DIRECTORY.filter(p=>new RegExp("\\b"+p.name.split(" ")[0].toLowerCase()+"\\b").test(t));
+  const neg=/\b(remove|don't tell|dont tell|do not tell|drop|without|not)\b/.test(t);
+  if(/\b(backup|cover|covering|delegate)\b/.test(t) && names.length){
+    snapshot(); S.backup=names[0].id; syncMessage(); S.flash="backup"; changed.push(`${names[0].name} is your backup`);
+  } else if(names.length && S.stage!=="empty"){
+    snapshot();
+    for(const p of names){ S.people[p.id]=!neg; }
+    S.flash="people";
+    changed.push((neg?"won't tell ":"added ")+names.map(p=>p.name).join(" and "));
+  } else if(/\b(tell|add|include|also)\b/.test(t) && !names.length && S.stage!=="empty"){
+    const w=(t.match(/\b(?:tell|add|include)\s+([a-z]+)/)||[])[1];
+    return bot(`I couldn't find ${w?"<b>"+esc(w)+"</b>":"that person"} in your directory. You can check people off in the plan, under <b>Who to tell</b>.`);
+  }
+  if(/\b(don't|dont|do not|no)\b.*\bdecline\b|keep (my )?meetings/.test(t)){ snapshot(); S.declineExisting=false; S.declineNew=false; changed.push("meetings won't be declined"); }
+  if(/\b(no|without|skip|don't|dont)\b.*\bauto.?reply\b/.test(t)){ snapshot(); S.autoReply=false; changed.push("no auto-reply"); }
+  if(/\bnobody\b|\bno one\b|unreachable|offline completely/.test(t)){ snapshot(); S.reach="nobody"; syncMessage(); changed.push("nobody will be told they can reach you"); }
+
+  if(changed.length){ render(); return bot(`Done: ${changed.join("; ")}. The plan on the right is updated.`); }
+  if(S.stage==="empty") return bot(`I didn't catch any dates. Try something like <b>"Out Dec 22 to 26"</b> or <b>"Off next Friday"</b>, or pick dates in the plan on the right.`);
+  return bot(`I can change dates, add or remove people ("also tell Maya"), set a backup ("Sam is my backup"), or skip the auto-reply. Say <b>send</b> when the plan looks right.`);
+}
+
+async function presentPlan(){
+  const a=parseIso(S.start), b=parseIso(S.end), sug=suggestions();
+  const items=actions().map(x=>`<li>${esc(x)}</li>`).join("");
+  let html=`Got it. Here's your plan:<div class="card"><div class="ct">Time off · ${fmt(a)} – ${fmt(b)}</div><div class="legend">${dayLine(a,b)} · back ${fmt(nextWorkday(b))}</div><ul>${items}</ul></div>`;
+  if(sug.length) html+=`<div style="margin-top:6px">Check these people: ${sug.map(s=>`<b>${esc(s.p.name)}</b> (${esc(s.why.replace(/^You/,"you"))})`).join(", ")}.</div>`;
+  html+=`<div style="margin-top:6px">Review or edit the plan on the right, then say <b>send</b>.</div>`;
+  await bot(html,700);
+  const acts=[["Send it",()=>{add("me","Send it"); confirmSend();}]];
+  for(const s of sug) acts.push([`Also tell ${s.p.name.split(" ")[0]}`,()=>userSays(`also tell ${s.p.name.split(" ")[0]}`)]);
+  log.append(chipRow(acts)); log.scrollTop=log.scrollHeight;
+}
+
+async function confirmSend(){
+  if(!included().length && S.teamFree){ return bot("No one is selected under <b>Who to tell</b>. Pick at least one person, or turn off telling your team."); }
+  snapshot(); S.stage="sent"; render();
+  const a=parseIso(S.start), b=parseIso(S.end);
+  await bot(`<div class="lead">Done. Your time off ${fmt(a)} to ${fmt(b)} is set.</div><ul>${actions().map(x=>`<li>${esc(x.replace(/^Tell/,"Told").replace(/^Mark/,"Marked").replace(/^Turn on/,"Turned on").replace(/^Decline (\d)/,"Declined $1").replace(/^Decline new/,"Will decline new"))}</li>`).join("")}</ul>I'll remind you on ${fmt(addDays(a,-3))} to hand off work to ${esc(P(S.backup).name)}.`,700);
+  log.append(chipRow([["See how calendars look",()=>showCal()],["Change dates",()=>{S.stage="draft"; render(); bot("OK, what are the new dates? You can also edit them at the top of the plan.");}],["Undo all",()=>undoAll()]]));
+  log.scrollTop=log.scrollHeight;
+}
+async function undoAll(){
+  S.stage="draft"; render();
+  await bot("Undone. I removed the notices from 7 calendars, turned off your auto-reply, and restored your declined meetings. Your plan is still here if you want to send it again.".replace("7",included().length));
+}
+
+/* ---------- plan panel ---------- */
+const plan=document.getElementById("plan");
+function sw(id,checked,label,sub){return `<div class="row"><input type="checkbox" class="switch" id="${id}" ${checked?"checked":""}><label class="txt" for="${id}"><b>${label}</b>${sub?`<small>${sub}</small>`:""}</label></div>`;}
+
+function render(){
+  const pr=document.getElementById("me-pres"); if(pr) pr.className="presence"+(S.stage==="sent"?" away":"");
+  document.getElementById("chat-pane").hidden = S.view==="cal";
+  document.getElementById("chatlist").hidden = S.view==="cal";
+  plan.hidden = S.view==="cal";
+  document.getElementById("calview").hidden = S.view!=="cal";
+  document.getElementById("nav-chat").setAttribute("aria-current", S.view==="chat"?"page":"false");
+  document.getElementById("nav-cal").setAttribute("aria-current", S.view==="cal"?"page":"false");
+  if(S.view==="cal") return renderCal();
+
+  if(S.stage==="empty"){
+    plan.innerHTML=`<div class="plan-head"><div class="eyebrow">Time off plan</div><div class="plan-title">No dates yet</div>
+      <div class="dates"><label>First day off<input type="date" id="d-start"></label><label>Last day off<input type="date" id="d-end"></label></div></div>
+      <div class="plan-body"><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h3"/></svg>
+      <div>Tell the assistant when you'll be out, or pick dates above. Your plan will appear here for you to review before anything is sent.</div></div></div>`;
+    bindDates(); return;
+  }
+  const a=parseIso(S.start), b=parseIso(S.end), aff=affected(), sug=suggestions(), inc=included();
+  const head=`<div class="plan-head"><div class="eyebrow">${S.stage==="sent"?"Time off set":"Time off plan · draft"}</div>
+    <div class="plan-title ${S.flash==="dates"?"flash":""}">${fmt(a,{month:"short",day:"numeric"})} – ${fmt(b,{month:"short",day:"numeric",year:"numeric"})}</div>
+    <div class="dates"><label>First day off<input type="date" id="d-start" value="${S.start}" ${S.stage==="sent"?"disabled":""}></label>
+    <label>Last day off<input type="date" id="d-end" value="${S.end}" ${S.stage==="sent"?"disabled":""}></label>
+    <span class="daycount">${dayLine(a,b)} · back ${fmt(nextWorkday(b))}</span></div>
+    ${S.stage==="sent"?"":`<div class="tabs" role="tablist"><button role="tab" id="t-plan" aria-selected="${S.tab==="plan"}">Plan</button><button role="tab" id="t-prev" aria-selected="${S.tab==="preview"}">Preview what others see</button></div>`}</div>`;
+
+  if(S.stage==="sent"){
+    const check='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+    plan.innerHTML=head+`<div class="plan-body"><div class="okbar">Everything is set. Edit dates once and every place below updates.</div>
+      <div class="group done-list">${actions().map(x=>`<div class="row">${check}<div class="txt">${esc(x.replace(/^Tell/,"Told").replace(/^Mark/,"Marked").replace(/^Turn on/,"Turned on").replace(/^Decline (\d)/,"Declined $1").replace(/^Decline new/,"Will decline new"))}</div></div>`).join("")}
+      <div class="row">${check}<div class="txt">Backup: ${esc(P(S.backup).name)} · reminder ${fmt(addDays(a,-3))} to hand off work</div></div></div>
+      <button class="btn secondary" id="see-cal" type="button">See how calendars look</button></div>
+      <div class="plan-foot"><span class="summary">Changed plans?</span><button class="btn secondary" id="chg" type="button">Change dates</button><button class="btn secondary" id="undo" type="button">Undo all</button></div>`;
+    document.getElementById("see-cal").onclick=showCal;
+    document.getElementById("chg").onclick=()=>{S.stage="draft"; render();};
+    document.getElementById("undo").onclick=()=>{add("me","Undo all"); undoAll();};
+    S.flash=null; return;
+  }
+
+  let body;
+  if(S.tab==="plan"){
+    const missing=sug.filter(s=>s.why.includes("meeting"));
+    body=`<div class="group"><h3>For me</h3>
+      ${sw("o-block",S.blockCal,"Mark my calendar Out of Office")}
+      ${sw("o-reply",S.autoReply,"Email auto-reply and away status","Uses the message below")}
+      ${sw("o-decl",S.declineExisting,`Decline my meetings while I'm out`, aff.length?`${aff.length} meetings`:`No meetings in this range`)}
+      ${S.declineExisting&&aff.length?`<ul class="meetings">${[...new Set(aff.map(m=>m.title))].map(t=>`<li>${esc(t)} (${aff.filter(m=>m.title===t).length}×)</li>`).join("")}</ul>`:""}
+      ${sw("o-new",S.declineNew,"Decline new invitations for these dates")}
+      </div>
+      <div class="group ${S.flash==="people"?"flash":""}"><h3>Who to tell <span>Shows as Free, so their calendars aren't blocked</span></h3>
+      ${missing.map(s=>`<div class="callout"><div>⚠ <b>${esc(s.p.name)}</b> (${esc(s.p.role)}) has ${esc(s.why.split(" with")[0])} with you and isn't on the list.</div><div class="acts"><button class="mini" data-add="${s.p.id}" type="button">Add ${esc(s.p.name.split(" ")[0])}</button><button class="mini" data-dismiss="${s.p.id}" type="button">Not needed</button></div></div>`).join("")}
+      ${DIRECTORY.filter(p=>S.people[p.id]||p.def).map(p=>`<label class="person"><input type="checkbox" data-p="${p.id}" ${S.people[p.id]?"checked":""}><span class="avatar">${p.name.split(" ").map(x=>x[0]).join("")}</span><span class="txt">${esc(p.name)}<small>${esc(p.role)}</small></span><span class="tag ${p.ext?"ext":""}">${esc(p.tag)}</span></label>`).join("")}
+      ${sug.filter(s=>!s.why.includes("meeting")).map(s=>`<div class="person"><span class="avatar">${s.p.name.split(" ").map(x=>x[0]).join("")}</span><span class="txt">${esc(s.p.name)}<small>Suggested: ${esc(s.why)}</small></span><button class="mini" data-add="${s.p.id}" type="button">Add</button></div>`).join("")}
+      <div class="field" style="margin-top:6px"><label for="addp">Add someone else</label><select id="addp"><option value="">Choose a person…</option>${DIRECTORY.filter(p=>!S.people[p.id]).map(p=>`<option value="${p.id}">${esc(p.name)} · ${esc(p.role)}</option>`).join("")}</select></div>
+      </div>
+      <div class="group ${S.flash==="backup"?"flash":""}"><h3>While I'm away</h3>
+      <div class="field"><label for="backup">Backup for my work</label><select id="backup">${DIRECTORY.filter(p=>!p.ext).map(p=>`<option value="${p.id}" ${S.backup===p.id?"selected":""}>${esc(p.name)} · ${esc(p.role)}</option>`).join("")}</select></div>
+      <div class="field" style="margin-top:10px"><span>Who can reach me</span><div class="radios">
+        ${[["manager","Only my manager, for emergencies"],["urgent","Anyone, for urgent issues (I'll check chat daily)"],["nobody","Nobody, I'm fully offline"]].map(([v,l])=>`<label><input type="radio" name="reach" value="${v}" ${S.reach===v?"checked":""}>${l}</label>`).join("")}
+      </div></div></div>
+      <div class="group"><h3>Message <span>${S.msgEdited?`Edited · <button class="mini" id="msg-reset" type="button">Use template</button>`:"From your template, updates with your choices"}</span></h3>
+      <div class="field"><textarea id="msg" aria-label="Auto-reply and notice message">${esc(S.message)}</textarea></div></div>`;
+  } else {
+    const p0=included()[0]||P("jordan");
+    body=`<div class="pv"><div class="pv-h">What ${esc(p0.name.split(" ")[0])}'s calendar shows on ${fmt(a,{month:"short",day:"numeric"})}</div><div class="pv-b">
+        <div class="cal-banner">${ME.name} · Out of office (all day)</div><div class="cal-evt">9:00 Atlas standup</div><div class="legend" style="margin-top:6px">Shows as Free. ${esc(p0.name.split(" ")[0])}'s own meetings stay bookable.</div></div></div>
+      <div class="pv"><div class="pv-h">Auto-reply people get when they email you${S.autoReply?"":" (off)"}</div><div class="pv-b mail">${esc(S.message)}</div></div>
+      <div class="pv"><div class="pv-h">Your status</div><div class="pv-b status"><span class="dot"></span><span><b>Away until ${fmt(nextWorkday(b))}</b><br><small class="legend">Backup: ${esc(P(S.backup).name)}</small></span></div></div>
+      <div class="pv"><div class="pv-h">Your calendar</div><div class="pv-b"><div class="cal-banner">Out of office · ${fmt(a,{month:"short",day:"numeric"})} – ${fmt(b,{month:"short",day:"numeric"})}</div>${S.declineExisting?`<div class="legend" style="margin-top:6px">${aff.length} meetings declined, organizers get your message.</div>`:""}</div></div>`;
+  }
+  const n=actions().length;
+  plan.innerHTML=head+`<div class="plan-body">${body}</div>
+    <div class="plan-foot"><span class="summary">${n} changes · ${inc.length} people notified · nothing sent yet</span>
+    <button class="btn secondary" id="discard" type="button">Discard</button><button class="btn" id="send" type="button" ${(!inc.length&&S.teamFree)?"disabled":""}>Send and set up</button></div>`;
+  bind(); S.flash=null;
+}
+
+function bindDates(){
+  const s=document.getElementById("d-start"), e=document.getElementById("d-end");
+  const go=()=>{
+    if(!s.value) return; snapshot();
+    const first=S.stage==="empty";
+    S.start=s.value; S.end=(e.value&&e.value>=s.value)?e.value:s.value; S.stage="draft"; syncMessage(); render();
+    if(first) presentPlan(); else add("note",`You changed the dates to ${fmt(parseIso(S.start))} – ${fmt(parseIso(S.end))}`);
+  };
+  s.onchange=go; e.onchange=go;
+}
+function bind(){
+  bindDates();
+  const on=(id,ev,fn)=>{const el=document.getElementById(id); if(el) el[ev]=fn;};
+  on("t-plan","onclick",()=>{S.tab="plan"; render();});
+  on("t-prev","onclick",()=>{S.tab="preview"; render();});
+  const tog=(id,key,note)=>on(id,"onchange",e=>{snapshot(); S[key]=e.target.checked; render(); add("note",`You turned ${e.target.checked?"on":"off"}: ${note}`);});
+  tog("o-block","blockCal","mark calendar Out of Office");
+  tog("o-reply","autoReply","auto-reply");
+  tog("o-decl","declineExisting","decline meetings while out");
+  tog("o-new","declineNew","decline new invitations");
+  plan.querySelectorAll("[data-p]").forEach(c=>c.onchange=()=>{snapshot(); S.people[c.dataset.p]=c.checked; render(); add("note",`You ${c.checked?"added":"removed"} ${P(c.dataset.p).name}`);});
+  plan.querySelectorAll("[data-add]").forEach(b=>b.onclick=()=>{snapshot(); S.people[b.dataset.add]=true; S.flash="people"; render(); add("note",`You added ${P(b.dataset.add).name}`);});
+  plan.querySelectorAll("[data-dismiss]").forEach(b=>b.onclick=()=>{S.dismissed[b.dataset.dismiss]=true; render();});
+  on("addp","onchange",e=>{if(!e.target.value) return; snapshot(); S.people[e.target.value]=true; S.flash="people"; render(); add("note",`You added ${P(e.target.value).name}`);});
+  on("backup","onchange",e=>{snapshot(); S.backup=e.target.value; syncMessage(); render(); add("note",`Backup set to ${P(S.backup).name}`);});
+  plan.querySelectorAll('input[name="reach"]').forEach(r=>r.onchange=()=>{snapshot(); S.reach=r.value; syncMessage(); render();});
+  on("msg","oninput",e=>{S.message=e.target.value; S.msgEdited=true;});
+  on("msg","onblur",()=>render());
+  on("msg-reset","onclick",()=>{S.msgEdited=false; syncMessage(); render();});
+  on("discard","onclick",()=>{S=fresh(); history=[]; greet(); render(); add("note","Plan discarded. Nothing was sent.");});
+  on("send","onclick",()=>{add("me","Send and set up"); confirmSend();});
+}
+
+/* ---------- calendar view ---------- */
+function showCal(){S.view="cal"; render();}
+function renderCal(){
+  const cv=document.getElementById("calview");
+  if(!S.start){cv.innerHTML=`<h2>Calendar</h2><div class="empty">No time off planned yet. Go back to Chat to plan it.</div><div><button class="btn secondary" id="back" type="button">Back to chat</button></div>`; document.getElementById("back").onclick=()=>{S.view="chat"; render();}; return;}
+  const a=parseIso(S.start), b=parseIso(S.end); const sent=S.stage==="sent";
+  let mon=new Date(a); while(mon.getDay()!==1) mon=addDays(mon,-1);
+  const days=[0,1,2,3,4].map(i=>addDays(mon,i)); const hours=[9,10,11,12,13,14,15,16];
+  const inRange=d=>d>=a&&d<=b;
+  const grid=(who)=>{
+    let h=`<div></div>`+days.map(d=>`<div class="dh">${fmt(d,{weekday:"short"})} ${d.getDate()}</div>`).join("");
+    h+=`<div class="t">all day</div>`+days.map(d=>`<div class="allday">${holidayOf(d)?`<div class="legend">${holidayOf(d)}</div>`:""}${sent&&inRange(d)?`<div class="cal-banner">${who==="me"?"Out of office":"Alex · OOO (Free)"}</div>`:""}</div>`).join("");
+    for(const hr of hours){
+      h+=`<div class="t">${hr>12?hr-12:hr}${hr>=12?"p":"a"}</div>`;
+      for(const d of days){
+        const evs=holidayOf(d)?[]:MEETINGS.filter(m=>m.h===hr&&m.days.includes(d.getDay())&&(who==="me"||m.with.includes("jordan")));
+        const off=who==="me"&&sent&&inRange(d)&&S.blockCal;
+        h+=`<div class="c ${off?"ooo":""}">${evs.map(m=>`<div class="ev ${who==="me"&&sent&&inRange(d)&&S.declineExisting?"declined":""}">${esc(m.title)}</div>`).join("")}${who!=="me"&&hr===13&&d.getDay()===2?`<div class="ev">Design review</div>`:""}</div>`;
+      }
+    }
+    return h;
+  };
+  cv.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>Week of ${fmt(mon,{month:"long",day:"numeric"})}</h2><button class="btn secondary" id="back" type="button">Back to chat</button></div>
+    ${sent?"":`<div class="callout">This plan hasn't been sent yet, so calendars don't show it. Send it from the chat to see the result.</div>`}
+    <div class="cal-pair">
+      <div class="cal"><div class="cal-title"><span>Your calendar</span><span class="legend">Out of Office: blocks you</span></div><div class="cal-scroll"><div class="cal-grid">${grid("me")}</div></div></div>
+      <div class="cal"><div class="cal-title"><span>Jordan Lee's calendar</span><span class="legend">Free notice: doesn't block Jordan</span></div><div class="cal-scroll"><div class="cal-grid">${grid("jordan")}</div></div></div>
+    </div>
+    <p class="legend">Striped hours are blocked as Out of Office on your calendar. Your teammates see a single all-day notice marked Free, so their own time stays bookable.${S.declineExisting?" Your meetings in this range are declined (crossed out).":""}</p>`;
+  document.getElementById("back").onclick=()=>{S.view="chat"; render();};
+}
+
+/* ---------- boot ---------- */
+document.getElementById("composer").onsubmit=e=>{e.preventDefault(); const i=document.getElementById("say"); const v=i.value; i.value=""; userSays(v);};
+document.getElementById("nav-chat").onclick=()=>{S.view="chat"; render();};
+document.getElementById("nav-cal").onclick=showCal;
+document.getElementById("reset").onclick=()=>{S=fresh(); history=[]; greet(); render();};
+S=fresh(); greet(); render();
+</script>
+
+</body>
+</html>
