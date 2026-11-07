@@ -212,7 +212,9 @@ button{cursor:pointer}
 .mm-grid button:hover{background:var(--surface-2)}
 .mm-grid button.out{color:var(--muted)}
 .mm-grid button.inview{background:var(--accent-soft);border-radius:4px;width:100%}
-.mm-grid button.pto{box-shadow:inset 0 -3px 0 var(--away)}
+.mm-grid button{position:relative}
+.mm-grid button.pto::after{content:"";position:absolute;left:50%;bottom:2px;width:12px;height:3px;margin-left:-6px;border-radius:2px;background:var(--away)}
+.mm-grid button.today.pto::after{background:var(--accent-ink)}
 .mm-grid button.today{background:var(--accent);color:var(--accent-ink);font-weight:700;border-radius:50%;width:26px}
 .key{display:grid;gap:9px;font-size:12.5px}
 .key h4{margin:0;font-size:13px}
@@ -394,22 +396,8 @@ const addDays=(d,n)=>{const x=new Date(d); x.setDate(x.getDate()+n); return x;};
 function nextWorkday(d){let x=addDays(d,1); while([0,6].includes(x.getDay())) x=addDays(x,1); return x;}
 function workdays(a,b){let n=0; for(let x=new Date(a); x<=b; x=addDays(x,1)) if(![0,6].includes(x.getDay())&&!holidayOf(x)) n++; return n;}
 function holidaysIn(a,b){const h=[]; for(let x=new Date(a); x<=b; x=addDays(x,1)) if(![0,6].includes(x.getDay())&&holidayOf(x)) h.push(holidayOf(x)); return h;}
-const dayLine=(a,b)=>{const h=holidaysIn(a,b); return `${workdays(a,b)} workdays${h.length?` + ${h.length} holiday${h.length>1?"s":""}`:""}`;};
+const dayLine=(a,b)=>{const h=holidaysIn(a,b); const n=workdays(a,b); return `${n} workday${n===1?"":"s"}${h.length?` + ${h.length} holiday${h.length>1?"s":""}`:""}`;};
 function mkDate(mon,day,ref){ let y=ref.getFullYear(); let d=new Date(y,mon,day,12); if(d<addDays(ref,-1)) d=new Date(y+1,mon,day,12); return d;}
-
-function parseDates(text){
-  const t=text.toLowerCase().replace(/(\d)(st|nd|rd|th)\b/g,"$1");
-  const now=today(); const found=[];
-  const re=/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:\s*(?:-|–|to|through|thru|until)\s*(\d{1,2})\b(?!\s*(?:am|pm)))?/g;
-  let m;
-  while((m=re.exec(t))){ const mon=MONTHS.indexOf(m[1]); found.push(mkDate(mon,+m[2],now)); if(m[3]) found.push(mkDate(mon,+m[3],now)); }
-  if(found.length){ let s=found[0], e=found[found.length-1]; if(e<s) e=new Date(e.getFullYear()+1,e.getMonth(),e.getDate(),12); return {s,e}; }
-  if(/\btomorrow\b/.test(t)){const d=addDays(now,1); return {s:d,e:d};}
-  if(/\bnext week\b/.test(t)){let d=addDays(now,1); while(d.getDay()!==1) d=addDays(d,1); return {s:d,e:addDays(d,4)};}
-  const dm=t.match(/\b(?:next\s+|this\s+)?(monday|tuesday|wednesday|thursday|friday)\b/);
-  if(dm){let d=addDays(now,1); while(DOW[d.getDay()]!==dm[1]) d=addDays(d,1); return {s:d,e:d};}
-  return null;
-}
 
 /* ---------- derived ---------- */
 const P=id=>DIRECTORY.find(p=>p.id===id);
@@ -480,67 +468,324 @@ function greet(){
   const n=today(); const fri=(()=>{let d=addDays(n,1); while(d.getDay()!==5) d=addDays(d,1); return d;})();
   log.append(chipRow([
     ["I'm out Dec 21 through Jan 1",()=>userSays("I'm out Dec 21 through Jan 1")],
-    [`Taking off next Friday`,()=>userSays("Taking off next Friday")],
-    ["Out next week",()=>userSays("Out next week")],
+    ["Thanksgiving week, Sam covers",()=>userSays("Thanksgiving week, Sam covers for me")],
+    ["Long weekend next Friday",()=>userSays("Long weekend next Friday")],
+    ["What can you do?",()=>userSays("What can you do?")],
   ]));
+}
+
+/* ---------- language rules (simulated understanding) ---------- */
+const NUMW={a:1,an:1,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,couple:2,"couple of":2,few:3,"a few":3,"a couple of":2};
+const numOf=w=>w==null?1:(/^\d+$/.test(w)?+w:(NUMW[w.trim()]||1));
+const NUM_RE="(\\d+|a couple of|a few|couple of|couple|few|an|a|one|two|three|four|five|six|seven|eight|nine|ten)";
+const MON_RE="(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?";
+const DOWS=["sun","mon","tue","wed","thu","fri","sat"];
+const DOW_RE="(mon|tue|tues|wed|thu|thur|thurs|fri)[a-z]*";
+const dowIdx=s=>DOWS.indexOf(s.slice(0,3));
+const monIdx=s=>MONTHS.indexOf(s.slice(0,3));
+function norm(text){return text.toLowerCase().replace(/[’‘]/g,"'").replace(/[–—]/g,"-").replace(/(\d)(st|nd|rd|th)\b/g,"$1").replace(/\bthru\b/g,"through").replace(/\btil+\b/g,"until").replace(/\s+/g," ").trim();}
+const isWknd=d=>[0,6].includes(d.getDay());
+const isOff=d=>isWknd(d)||!!holidayOf(d);
+function weekMon(d){return addDays(d,-((d.getDay()+6)%7));}
+function trimRange(s,e){ if(iso(s)===iso(e)) return {s,e}; let a=new Date(s), b=new Date(e); while(isWknd(a)&&a<b) a=addDays(a,1); while(isWknd(b)&&b>a) b=addDays(b,-1); return {s:a,e:b}; }
+function addWorkdays(d,n){ let x=new Date(d), c=1; while(c<n){ x=addDays(x,1); if(!isOff(x)) c++; } return x; }
+function shiftWork(d,n){ let x=new Date(d), step=n<0?-1:1, k=Math.abs(n); while(k>0){ x=addDays(x,step); if(!isWknd(x)) k--; } return x; }
+function prevWorkday(d){ let x=addDays(d,-1); while(isWknd(x)) x=addDays(x,-1); return x; }
+function thanksgiving(y){ let d=new Date(y,10,1,12); while(d.getDay()!==4) d=addDays(d,1); return addDays(d,21); }
+function resolveDow(dow,prefix,t){
+  const now=today();
+  if(/\bnext week\b/.test(t)) return addDays(weekMon(now),7+(dow-1));
+  if(/\bweek after next\b/.test(t)) return addDays(weekMon(now),14+(dow-1));
+  let d=addDays(now,1); while(d.getDay()!==dow) d=addDays(d,1);
+  if(prefix==="next" && d<addDays(weekMon(now),7)) d=addDays(d,7);
+  return d;
+}
+function applyDuration(s,t){
+  const m=t.match(new RegExp("\\b(?:for )?(?:the )?"+NUM_RE+"? ?(?:more )?(work ?days?|days?|weeks?)\\b(?! (?:ago|before|after|later|earlier))"));
+  if(!m || /\b(later|earlier|move|push|shift)\b/.test(t)) return null;
+  const n=numOf(m[1]);
+  if(/week/.test(m[2])) return trimRange(s,addDays(s,7*n-1));
+  return {s,e:addWorkdays(s,n)};
+}
+
+// Returns {s,e,single,half,how} or null
+function parseDates(text){
+  const t=norm(text), now=today(), found=[];
+  const half=/\b(morning|afternoon|half[- ]day|half the day)\b/.test(t);
+  let m, re;
+  re=new RegExp("\\b"+MON_RE+"\\s+(\\d{1,2})(?:,?\\s*(\\d{4}))?(?:\\s*(?:-|to|through|until)\\s*(\\d{1,2})\\b(?!\\s*(?:am|pm|:|\\/)))?","g");
+  while((m=re.exec(t))){ const mon=monIdx(m[1]); if(mon<0||+m[2]>31) continue; const y=m[3]?+m[3]:null;
+    const mk=day=>y?new Date(y,mon,day,12):mkDate(mon,day,now);
+    found.push({i:m.index,d:mk(+m[2])}); if(m[4]) found.push({i:m.index+1,d:mk(+m[4])}); }
+  re=new RegExp("\\b(\\d{1,2})\\s+(?:of\\s+)?"+MON_RE+"(?!\\s*\\d)","g");
+  while((m=re.exec(t))){ const mon=monIdx(m[2]); if(mon<0||+m[1]>31) continue; found.push({i:m.index,d:mkDate(mon,+m[1],now)}); }
+  re=/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?(?:\s*-\s*(\d{1,2})\b(?!\/))?/g;
+  while((m=re.exec(t))){ const mon=+m[1]-1, day=+m[2]; if(mon<0||mon>11||day>31) continue;
+    const y=m[3]?(m[3].length===2?2000+ +m[3]:+m[3]):null; const mk=dd=>y?new Date(y,mon,dd,12):mkDate(mon,dd,now);
+    found.push({i:m.index,d:mk(day)}); if(m[4]) found.push({i:m.index+1,d:mk(+m[4])}); }
+  if(found.length){
+    found.sort((x,y)=>x.i-y.i);
+    let s=found[0].d, e=found[found.length-1].d;
+    if(e<s) e=new Date(e.getFullYear()+1,e.getMonth(),e.getDate(),12);
+    if(found.length===1){
+      if(/\bweek of\b/.test(t)){ const mo=weekMon(s); return {s:mo,e:addDays(mo,4),single:false,how:"week"}; }
+      const dur=applyDuration(s,t); if(dur) return {...dur,single:false,half};
+      return {s,e:s,single:true,half};
+    }
+    return {...trimRange(s,e),single:false,half};
+  }
+  // holidays
+  const yX=(now.getMonth()===11&&now.getDate()>25)?now.getFullYear()+1:now.getFullYear();
+  const xmas=new Date(yX,11,25,12);
+  if(/\bbetween (christmas|xmas) and new year|\b(christmas|xmas) (to|through|until|-) new year/.test(t)) return {...trimRange(new Date(yX,11,26,12),new Date(yX,11,31,12)),single:false,how:"between"};
+  if(/\b(the )?(winter |holiday |christmas )?(holidays|holiday break|winter break|end of (the )?year)\b/.test(t)) return {...trimRange(weekMon(xmas),new Date(yX+1,0,1,12)),single:false};
+  if(/\bweek after (christmas|xmas)\b/.test(t)){ const mo=addDays(weekMon(xmas),7); return {s:mo,e:addDays(mo,4),single:false}; }
+  if(/\b(christmas|xmas) week\b|\bweek of (christmas|xmas)\b/.test(t)){ const mo=weekMon(xmas); return {s:mo,e:addDays(mo,4),single:false}; }
+  if(/\b(christmas|xmas) eve\b/.test(t)) return {s:new Date(yX,11,24,12),e:new Date(yX,11,24,12),single:true};
+  if(/\b(christmas|xmas)\b/.test(t)) return {...trimRange(new Date(yX,11,24,12),new Date(yX,11,26,12)),single:false};
+  if(/\bnew year'?s? eve\b/.test(t)) return {s:new Date(yX,11,31,12),e:new Date(yX,11,31,12),single:true};
+  if(/thanksgiving|black friday/.test(t)){
+    let tg=thanksgiving(now.getFullYear()); if(tg<now) tg=thanksgiving(now.getFullYear()+1);
+    if(/\bweek\b/.test(t)){ const mo=weekMon(tg); return {s:mo,e:addDays(mo,4),single:false}; }
+    if(/day after|black friday/.test(t)) return {s:addDays(tg,1),e:addDays(tg,1),single:true};
+    return {s:addDays(tg,-1),e:addDays(tg,1),single:false};
+  }
+  // "the 21st to the 28th" (no month)
+  if((m=t.match(/\bthe (\d{1,2}) (?:to|through|until|-) (?:the )?(\d{1,2})\b/))){
+    const mon=+m[1]>=now.getDate()?now.getMonth():(now.getMonth()+1)%12;
+    const s=mkDate(mon,+m[1],now); let e=mkDate(mon,+m[2],now); if(e<s) e=mkDate((mon+1)%12,+m[2],now);
+    return {...trimRange(s,e),single:false};
+  }
+  // "first/last week of December"
+  if((m=t.match(new RegExp("\\b(first|second|third|fourth|last) week (?:of|in) "+MON_RE)))){
+    const mon=monIdx(m[2]); let y=now.getFullYear(); if(new Date(y,mon+1,0,12)<now) y++;
+    let mo;
+    if(m[1]==="last"){ mo=weekMon(new Date(y,mon+1,0,12)); }
+    else { mo=new Date(y,mon,1,12); while(mo.getDay()!==1) mo=addDays(mo,1); mo=addDays(mo,7*["first","second","third","fourth"].indexOf(m[1])); }
+    return {s:mo,e:addDays(mo,4),single:false};
+  }
+  // weekday ranges: "monday through wednesday", "thursday and friday next week"
+  re=new RegExp("\\b(?:(this|next|on) )?"+DOW_RE+" (?:through|to|until|-|and) (?:(this|next) )?"+DOW_RE+"\\b");
+  if((m=t.match(re))){
+    const s=resolveDow(dowIdx(m[2]),m[1],t); let e=new Date(s); while(e.getDay()!==dowIdx(m[4])) e=addDays(e,1);
+    return {s,e,single:false,half};
+  }
+  // long weekend
+  if(/\blong weekend\b/.test(t)){
+    const dm=t.match(new RegExp("\\b(?:(this|next|on) )?"+DOW_RE+"\\b"));
+    let s=dm?resolveDow(dowIdx(dm[2]),dm[1],t):resolveDow(5,null,t);
+    if(s.getDay()===1) return {s:addDays(s,-3),e:s,single:false,how:"long"};
+    if(s.getDay()!==5){ while(s.getDay()!==5) s=addDays(s,1); }
+    return {s,e:addDays(s,3),single:false,how:"long"};
+  }
+  let start=null;
+  if(/\btomorrow\b/.test(t)) start=addDays(now,1);
+  else if(/\btoday\b/.test(t)) start=now;
+  if(!start && (m=t.match(new RegExp("\\bnext "+NUM_RE+" (weeks|days)\\b")))){
+    const n=numOf(m[1]); const mo=addDays(weekMon(now),7);
+    return /week/.test(m[2])?{...trimRange(mo,addDays(mo,7*n-1)),single:false}:{s:addDays(now,1),e:addWorkdays(nextWorkday(now),n),single:false};
+  }
+  if(!start && /\bweek after next\b/.test(t) && !new RegExp(DOW_RE).test(t)){ const mo=addDays(weekMon(now),14); return {s:mo,e:addDays(mo,4),single:false}; }
+  if(!start && /\bnext week\b/.test(t) && !new RegExp("\\b"+DOW_RE+"\\b").test(t)){ const mo=addDays(weekMon(now),7); return {s:mo,e:addDays(mo,4),single:false}; }
+  if(!start && /\b(rest of (the|this) week|this week)\b/.test(t)){ const f=addDays(weekMon(now),4); if(now>=f) return null; return {s:addDays(now,1),e:f,single:false}; }
+  if(!start && (m=t.match(new RegExp("\\b(?:(this|next|on|coming) )?"+DOW_RE+"\\b")))){
+    start=resolveDow(dowIdx(m[2]),m[1]==="coming"?null:m[1],t);
+  }
+  if(start){ const dur=applyDuration(start,t); if(dur) return {...dur,single:false,half}; return {s:start,e:start,single:true,half}; }
+  return null;
+}
+
+/* people */
+const ALL_INTERNAL=DIRECTORY.filter(p=>!p.ext).map(p=>p.id);
+const GROUPS=[
+  {re:/\b(my )?(manager|boss|supervisor)\b/, ids:["priya"], label:"your manager"},
+  {re:/\b(my |direct )?reports\b/, ids:["jordan","sam"], label:"your direct reports"},
+  {re:/\b(my team|the team|team atlas|atlas|project team|my teammates|teammates|the devs|engineers)\b/, ids:["jordan","sam","diego","emma","lena"], label:"the Atlas team"},
+  {re:/\b(the )?(client|clients|customer)\b|\bnorthwind\b|\bexternal\b/, ids:["chris"], label:"the client"},
+  {re:/\bqa\b|\btesters?\b/, ids:["maya"], label:"QA"},
+  {re:/\bfinance\b/, ids:["omar"], label:"finance"},
+  {re:/\b(everyone|everybody|all of them|whole team)\b/, ids:ALL_INTERNAL, label:"everyone internal"},
+];
+function peopleIn(clause){
+  const ids=new Set(), labels=[];
+  for(const p of DIRECTORY){ const [f,l]=p.name.toLowerCase().split(" "); if(new RegExp("\\b("+f+"|"+l+")\\b").test(clause)) { ids.add(p.id); } }
+  for(const g of GROUPS){ if(g.re.test(clause)){ g.ids.forEach(i=>ids.add(i)); labels.push(g); } }
+  return {ids:[...ids], groups:labels};
+}
+const STOP=new Set("me my the everyone everybody them him her people folks know all team anyone anybody nobody no whole our a an and also in client clients manager boss reports qa finance that this it about you your on of to".split(" "));
+
+/* questions */
+function answer(t){
+  const has=!!S.start;
+  const a=has?parseIso(S.start):null, b=has?parseIso(S.end):null;
+  const need="Tell me your dates first, then I can answer that from your plan.";
+  if(/\b(what can you|help|how does this work|what do you do|what can i say)\b/.test(t))
+    return bot(`I can plan your time off from plain language. Try:<ul><li>dates: "Dec 21 through Jan 1", "12/22-12/26", "Christmas week", "Thursday and Friday next week", "Monday for 3 days", "long weekend"</li><li>people: "also tell Maya", "tell my reports but not the client", "Sam is my backup"</li><li>changes: "push it a day later", "I'm back Jan 5", "extend to Jan 4"</li><li>settings: "don't decline my meetings", "no auto-reply", "only my manager can reach me"</li><li>questions: "who gets told?", "what does Jordan see?", "which meetings get declined?"</li></ul>`);
+  if(/\b(approv|request|balance|left|remaining|accrue|hr system|how much pto)\b/.test(t))
+    return bot("I can't see your PTO balance or approvals. Those live in your HR system. I take care of letting people know and setting up your calendar.");
+  if(!has) return bot(need);
+  if(/\bwho\b.*\b(backup|cover|covering|in charge)\b|\bis \w+ (my )?backup\b/.test(t))
+    return bot(`${esc(P(S.backup).name)} is your backup. Say something like "Lena is my backup" to change it.`);
+  if(/\b(miss|missing|forget|forgot|forgetting|anyone else|left out|leaving out)\b/.test(t)){
+    const sg=suggestions();
+    return bot(sg.length?`Maybe: ${sg.map(x=>`<b>${esc(x.p.name)}</b> (${esc(x.why.replace(/^You/,"you"))})`).join(", ")}.`:"No one obvious. Everyone with meetings during your time off is on the list.");
+  }
+  if(/\bwho\b|\bhow many people\b|\bon the list\b/.test(t))
+    return bot(`I'll tell ${included().length} people: ${esc(included().map(p=>p.name).join(", ")||"no one")}. It shows on their calendars as Free, so it doesn't block them.`);
+  if(/\b(see|look|looks|appear|show|shows)\b/.test(t)){
+    S.tab="preview"; render();
+    const w=peopleIn(t).ids[0];
+    return bot(`${w&&w!=="me"?esc(P(w).name.split(" ")[0])+" sees":"Teammates see"} one all-day notice, "Alex Morgan · Out of office", marked Free, so their own time stays bookable. I opened <b>Preview</b> on the right.${S.stage==="sent"?" You can also open the calendar and switch to Jordan's view.":""}`);
+  }
+  if(/\bmeeting/.test(t)){
+    const aff=affected(); if(!aff.length) return bot("No meetings fall in those dates.");
+    const by={}; aff.forEach(m=>by[m.title]=(by[m.title]||0)+1);
+    return bot(`${S.declineExisting?"I'll decline":"You have"} ${aff.length} meetings: ${Object.entries(by).map(([k,v])=>`${esc(k)}${v>1?` (${v}×)`:""}`).join(", ")}.${S.declineExisting?" Organizers get your auto-reply.":" (Declining is off.)"}`);
+  }
+  if(/\bwhen\b.*\b(back|return)\b/.test(t)) return bot(`You're back ${fmt(nextWorkday(b),{weekday:"long",month:"long",day:"numeric"})}.`);
+  if(/\bhow (many|long)\b/.test(t)) return bot(`${fmt(a)} to ${fmt(b)} is ${dayLine(a,b)}.`);
+  if(/\b(message|auto[- ]?reply|say|says|ooo)\b/.test(t)) return bot(`Your auto-reply${S.autoReply?"":" (currently off)"} says:<div class="card mail">${esc(S.message)}</div>`);
+  if(/\bblock\b/.test(t)) return bot(`Your calendar is ${S.blockCal?"blocked as Out of Office":"not blocked"}. Teammates' calendars are never blocked; they get a Free notice.`);
+  if(/\b(sent|done|set|ready)\b/.test(t)) return bot(S.stage==="sent"?"Yes, everything is set.":"Not yet. Nothing goes out until you say <b>send</b>.");
+  return bot(`I'm not sure about that one. I can tell you who gets told, what teammates see, which meetings get declined, or when you're back.`);
 }
 
 async function userSays(text){
   if(!text.trim()) return;
   add("me",esc(text));
-  const t=text.toLowerCase();
-  if(S.stage==="sent" && !/\b(undo|cancel|change)\b/.test(t)){ await bot("Your time off is already set. Say <b>change dates</b> or <b>undo</b> if plans changed."); return; }
+  const t=norm(text), words=t.split(" ").length;
+  const hasDigit=/\d/.test(t);
 
-  // confirm
-  if(/^(send|send it|confirm|looks good|yes|go ahead|do it)\b/.test(t.trim())){
-    if(S.stage==="draft") return confirmSend(); else return bot("Tell me your dates first, then I'll show you the plan.");
-  }
-  if(/\bundo\b/.test(t)){
+  if(/^(thanks|thank you|thx|ty|cheers|awesome|great job)\b/.test(t) && words<=5)
+    return bot(S.stage==="sent"?"You're welcome. Enjoy your time off!":"Happy to help. Say <b>send</b> when the plan looks right.");
+  if(/^(hi|hello|hey|yo|good (morning|afternoon|evening))\b/.test(t) && words<=4 && !hasDigit)
+    return bot(`Hi ${ME.first}! When will you be out?`);
+
+  if(/^(undo|never ?mind|nvm|scratch that|revert|go back|oops)\b/.test(t)){
     if(S.stage==="sent") return undoAll();
     if(history.length){ S=JSON.parse(history.pop()); render(); return bot("Undid the last change."); }
     return bot("There's nothing to undo yet.");
   }
-  if(/\bcancel\b/.test(t) && S.stage==="sent") return undoAll();
+  if(/\b(cancel|discard|delete|scrap)\b.*\b(time off|pto|plan|it|everything|vacation|leave)\b|^(cancel|discard)$/.test(t)){
+    if(S.stage==="sent") return undoAll();
+    if(S.stage==="draft"){ S=fresh(); history=[]; render(); return bot("Discarded the plan. Nothing was sent."); }
+  }
+  if(/^(ok(ay)?[ ,!]*)?(send|send it|yes|yep|yeah|yup|sure|confirm|looks good|lgtm|perfect|great|ship it|go ahead|go for it|do it|sounds good|all good|that'?s (right|it|good)|correct)\b/.test(t) && words<=6 && !hasDigit){
+    if(S.stage==="draft") return confirmSend();
+    if(S.stage==="sent") return bot("It's already set. Say <b>change dates</b> or <b>undo</b> if plans changed.");
+    return bot("Tell me your dates first, then I'll show you the plan.");
+  }
+  const isQ=(/\?\s*$/.test(text)||/^(who|what|which|how|when|where|does|do|did|is|are|am|should|whats|what's|who's)\b/.test(t)) && !/^(can|could|would|will) you\b|^please\b/.test(t);
+  if(isQ) return answer(t);
+  if(/\b(approv|request (time off|pto)|pto balance|how much pto)\b/.test(t)) return answer(t);
 
-  let changed=[];
-  const d=parseDates(text);
+  // ---- changes ----
+  const before=JSON.stringify(S), wasSent=S.stage==="sent", first=S.stage==="empty";
+  const changed=[]; let note=null;
+  const mm=text.match(/(?:add to the message|in the message,? (?:say|mention)|message should (?:say|mention)|mention that|say that|tell them that|add a note)[:,]?\s+["“]?(.+?)["”]?\s*$/i);
+  const body=mm?text.slice(0,mm.index):text, tb=norm(body);
+  const setRange=(s,e)=>{ if(e<s) [s,e]=[e,s]; S.start=iso(s); S.end=iso(e); S.flash="dates"; };
+
+  const d=body.trim()?parseDates(body):null;
+  if(d && d.single && isWknd(d.s)){ const w=fmt(d.s,{weekday:"long"}); d.s=nextWorkday(d.s); d.e=d.s; note=`That's a ${w}, so I used ${fmt(d.s)} instead.`; }
   if(d){
-    snapshot();
-    const first=S.stage==="empty";
-    S.start=iso(d.s); S.end=iso(d.e);
-    if(S.stage==="sent") S.stage="draft";
-    S.stage="draft"; syncMessage(); S.flash="dates"; render();
-    if(first) return presentPlan();
-    changed.push(`dates are now ${fmt(d.s)} to ${fmt(d.e)}`);
+    if(S.start && d.single){
+      const s0=parseIso(S.start), e0=parseIso(S.end);
+      if(/\b(i'?m back|be back|back on|back in|back by|back at work|return(ing)?( on| to work)?|in the office on)\b/.test(t)){ setRange(s0,prevWorkday(d.s)); changed.push(`you're back ${fmt(d.s)}`); }
+      else if(/\b(extend|until|through|ending|end on|end it on|last day)\b/.test(t)){ setRange(s0,d.s); changed.push(`last day is now ${fmt(d.s)}`); }
+      else if(/\b(start|starting|first day|begin|beginning|leave on|leaving on)\b/.test(t)){ setRange(d.s,d.s>e0?d.s:e0); changed.push(`first day is now ${fmt(d.s)}`); }
+      else if(/\b(also|add|plus|too|as well)\b/.test(t) && Math.abs(d.s-e0)<5*864e5 || /\b(also|add|plus|too|as well)\b/.test(t) && Math.abs(s0-d.s)<5*864e5){
+        setRange(d.s<s0?d.s:s0, d.s>e0?d.s:e0); changed.push(`added ${fmt(d.s)}`); }
+      else { setRange(d.s,d.e); changed.push(`dates are now ${fmt(d.s)}`); }
+    } else { setRange(d.s,d.e); if(!first) changed.push(`dates are now ${fmt(d.s)} to ${fmt(d.e)}`); }
+    if(d.half) note=(note?note+" ":"")+"I can only plan full days for now, so I set it as a full day. You can mention the half day in your message.";
+    if(d.s<addDays(today(),-1)) note="Heads up: that date is in the past. Did you mean next year? You can fix it in the dates above.";
+  } else if(S.start){
+    let m;
+    const s0=parseIso(S.start), e0=parseIso(S.end);
+    const nm=(m=t.match(new RegExp(NUM_RE+" (?:more )?(day|days|week|weeks)\\b")))?numOf(m[1]):1;
+    const unitWeek=m&&/week/.test(m[2]);
+    const earlier=/\b(earlier|sooner|up|back a|before)\b/.test(t) && !/\bpush (it )?back\b/.test(t);
+    if(/\b(move|push|shift|slide|bump|delay|postpone)\b/.test(t)){
+      const sh=x=>unitWeek?addDays(x,(earlier?-7:7)*nm):shiftWork(x,earlier?-nm:nm);
+      setRange(sh(s0),sh(e0)); changed.push(`moved ${nm} ${unitWeek?"week":"workday"}${nm>1?"s":""} ${earlier?"earlier":"later"}`);
+    } else if(/\b(extend|longer|one more day|another day|extra day|add (a|one|\d+|two|three) (more )?days?)\b/.test(t)){
+      setRange(s0, unitWeek?addDays(e0,7*nm):shiftWork(e0,nm)); changed.push(`extended to ${fmt(parseIso(S.end))}`);
+    } else if(/\b(shorten|shorter|one less day|a day less|come back (a day )?early|back (a day )?early|cut)\b/.test(t)){
+      setRange(s0, unitWeek?addDays(e0,-7*nm):shiftWork(e0,-nm)); changed.push(`last day is now ${fmt(parseIso(S.end))}`);
+    }
   }
-  // people
-  const names=DIRECTORY.filter(p=>new RegExp("\\b"+p.name.split(" ")[0].toLowerCase()+"\\b").test(t));
-  const neg=/\b(remove|don't tell|dont tell|do not tell|drop|without|not)\b/.test(t);
-  if(/\b(backup|cover|covering|delegate)\b/.test(t) && names.length){
-    snapshot(); S.backup=names[0].id; syncMessage(); S.flash="backup"; changed.push(`${names[0].name} is your backup`);
-  } else if(names.length && S.stage!=="empty"){
-    snapshot();
-    for(const p of names){ S.people[p.id]=!neg; }
-    S.flash="people";
-    changed.push((neg?"won't tell ":"added ")+names.map(p=>p.name).join(" and "));
-  } else if(/\b(tell|add|include|also)\b/.test(t) && !names.length && S.stage!=="empty"){
-    const w=(t.match(/\b(?:tell|add|include)\s+([a-z]+)/)||[])[1];
-    return bot(`I couldn't find ${w?"<b>"+esc(w)+"</b>":"that person"} in your directory. You can check people off in the plan, under <b>Who to tell</b>.`);
-  }
-  if(/\b(don't|dont|do not|no)\b.*\bdecline\b|keep (my )?meetings/.test(t)){ snapshot(); S.declineExisting=false; S.declineNew=false; changed.push("meetings won't be declined"); }
-  if(/\b(no|without|skip|don't|dont)\b.*\bauto.?reply\b/.test(t)){ snapshot(); S.autoReply=false; changed.push("no auto-reply"); }
-  if(/\bnobody\b|\bno one\b|unreachable|offline completely/.test(t)){ snapshot(); S.reach="nobody"; syncMessage(); changed.push("nobody will be told they can reach you"); }
 
-  if(changed.length){ render(); return bot(`Done: ${changed.join("; ")}. The plan on the right is updated.`); }
-  if(S.stage==="empty") return bot(`I didn't catch any dates. Try something like <b>"Out Dec 22 to 26"</b> or <b>"Off next Friday"</b>, or pick dates in the plan on the right.`);
-  return bot(`I can change dates, add or remove people ("also tell Maya"), set a backup ("Sam is my backup"), or skip the auto-reply. Say <b>send</b> when the plan looks right.`);
+  // people, clause by clause
+  const clauses=tb.split(/[,;.]| but | and also | also | plus /);
+  for(const c of clauses){
+    const {ids,groups}=peopleIn(c);
+    const isBackup=/\b(backup|back-up|back up|cover|covers|covering|delegate|point of contact|poc|in charge|handle|handling|fill(s|ing)? in)\b/.test(c);
+    const neg=/\b(remove|don'?t|do not|drop|without|not|exclude|leave out|leave off|skip|no need to tell|take off|uninvite)\b/.test(c);
+    if(isBackup && ids.length){
+      const pick=ids.find(i=>!P(i).ext) ; if(pick){ S.backup=pick; S.flash="backup"; changed.push(`${P(pick).name} is your backup`); }
+      continue;
+    }
+    if(!ids.length){
+      const w=(c.match(/\b(?:tell|add|include|notify|cc|loop in|inform|ping|let)\s+([a-z]+)/)||[])[1];
+      if(w && !STOP.has(w) && S.start!==null) note=`I couldn't find <b>${esc(w.charAt(0).toUpperCase()+w.slice(1))}</b> in your directory. You can pick people in the plan under <b>Who to tell</b>.`;
+      continue;
+    }
+    if(/\b(i'?m|me|my calendar)\b/.test(c) && !/\b(tell|add|include|notify|cc|let|inform|loop|remove|drop|not)\b/.test(c) && !groups.length && ids.length===0) continue;
+    for(const i of ids) S.people[i]=!neg;
+    if(!neg) S.dismissed={...S.dismissed};
+    const named=groups.length?groups.map(g=>g.label).join(" and "):ids.map(i=>P(i).name).join(" and ");
+    changed.push((neg?"won't tell ":"added ")+named);
+    S.flash="people";
+  }
+  if(/\b(don'?t|do not)\s+(tell|notify|let|inform)\s+(anyone|anybody|people)\b|\btell (no one|nobody)\b|\bkeep it (quiet|private)\b/.test(t)){
+    DIRECTORY.forEach(p=>S.people[p.id]=false); changed.push("no one will be told");
+  }
+  // reachability
+  if(/\b(fully offline|completely offline|totally offline|off ?the ?grid|unreachable|don'?t (contact|call|ping|bother|message|reach) me|no one (can|should) (contact|reach)|nobody (can|should) (contact|reach)|disconnect(ing)?)\b/.test(t)){ S.reach="nobody"; changed.push("you'll be fully offline"); }
+  else if(/\bonly (my manager|priya|my boss)\b|\bemergenc(y|ies) only\b|\bonly (for|in) (an )?emergenc/.test(t)){ S.reach="manager"; changed.push("only your manager can reach you, for emergencies"); }
+  else if(/\b(i'?ll|i will|i can) (check|look at|watch) (slack|chat|email|messages|teams)|\bping me if\b|\btext me if\b|\breachable\b|\bcan be reached\b|\bfor urgent\b|\bif (it'?s )?urgent\b/.test(t)){ S.reach="urgent"; changed.push("people can reach you for urgent issues"); }
+  // meetings & settings
+  if(/\b(don'?t|do not|no need to|without|stop)\s+(auto[- ]?)?(declin|cancel)\w*|\bkeep (all )?(my )?meetings\b|\bleave (my )?meetings\b/.test(t)){ S.declineExisting=false; changed.push("your meetings won't be declined"); }
+  else if(/\b(decline|cancel) (all )?(my )?meetings\b/.test(t)){ S.declineExisting=true; changed.push("your meetings will be declined"); }
+  if(/\b(don'?t|do not)\b.*\b(new|future) (invites|invitations|meetings)\b|\baccept new\b/.test(t)){ S.declineNew=false; changed.push("new invitations won't be declined"); }
+  if(/\b(no|without|skip|don'?t|do not|turn off|disable)\b[^.]*\b(auto[- ]?reply|out[- ]of[- ]office (message|reply)|ooo (message|reply)|away message)\b/.test(t)){ S.autoReply=false; changed.push("no auto-reply"); }
+  else if(/\b(turn on|set|add|with|enable)\b[^.]*\b(auto[- ]?reply|ooo message|away message)\b/.test(t)){ S.autoReply=true; changed.push("auto-reply is on"); }
+  if(/\b(don'?t|do not)\b[^.]*\bblock\b[^.]*\bcalendar\b/.test(t)){ S.blockCal=false; changed.push("your calendar won't be blocked"); }
+  // message text
+  if(mm){ syncMessage(); S.message=S.message.replace(/\n\nThanks,/,"\n\n"+mm[1].replace(/^./,c=>c.toUpperCase()).replace(/([^.!?])$/,"$1.")+"\n\nThanks,"); S.msgEdited=true; changed.push("added that to your message"); }
+
+  const didChange=JSON.stringify(S)!==before;
+  if(didChange){
+    history.push(before); if(history.length>30) history.shift();
+    if(S.start){ if(S.stage!=="draft"){ S.stage="draft"; } syncMessage(); }
+    render();
+    if(first && S.start) return presentPlan(changed, note);
+    let msg=changed.length?`Done: ${changed.join("; ")}.`:"Updated.";
+    if(wasSent) msg+=" I reopened your plan as a draft. Nothing changes for others until you send again.";
+    else msg+=" The plan on the right is updated.";
+    if(note) msg+=`<div style="margin-top:6px">${note}</div>`;
+    if(!S.start) msg+=" Now tell me your dates.";
+    return bot(msg);
+  }
+  if(note) return bot(note);
+  if(S.stage==="empty"){
+    await bot(`I didn't catch any dates. You can say things like:`);
+    log.append(chipRow([["Dec 21 through Jan 1",()=>userSays("Dec 21 through Jan 1")],["Christmas week",()=>userSays("Christmas week")],["Thursday and Friday next week",()=>userSays("Thursday and Friday next week")],["What can you do?",()=>userSays("What can you do?")]]));
+    log.scrollTop=log.scrollHeight; return;
+  }
+  await bot(`I didn't catch that. I can change dates, add or remove people, set a backup, or answer questions about your plan.`);
+  log.append(chipRow([["Who gets told?",()=>userSays("Who gets told?")],["What does Jordan see?",()=>userSays("What does Jordan see?")],["Push it a day later",()=>userSays("Push it a day later")],[S.stage==="sent"?"Undo all":"Send",()=>userSays(S.stage==="sent"?"undo":"send")]]));
+  log.scrollTop=log.scrollHeight;
 }
 
-async function presentPlan(){
+async function presentPlan(extra, note){
   const a=parseIso(S.start), b=parseIso(S.end), sug=suggestions();
   const items=actions().map(x=>`<li>${esc(x)}</li>`).join("");
-  let html=`Got it. Here's your plan:<div class="card"><div class="ct">Time off · ${fmt(a)} – ${fmt(b)}</div><div class="legend">${dayLine(a,b)} · back ${fmt(nextWorkday(b))}</div><ul>${items}</ul></div>`;
+  let html=`Got it. Here's your plan:<div class="card"><div class="ct">Time off · ${S.start===S.end?fmt(a):`${fmt(a)} – ${fmt(b)}`}</div><div class="legend">${dayLine(a,b)} · back ${fmt(nextWorkday(b))}</div><ul>${items}</ul></div>`;
   if(sug.length) html+=`<div style="margin-top:6px">Check these people: ${sug.map(s=>`<b>${esc(s.p.name)}</b> (${esc(s.why.replace(/^You/,"you"))})`).join(", ")}.</div>`;
+  if(extra&&extra.length) html+=`<div style="margin-top:6px">Also: ${esc(extra.join("; "))}.</div>`;
+  if(note) html+=`<div style="margin-top:6px">${note}</div>`;
   html+=`<div style="margin-top:6px">Review or edit the plan on the right, then say <b>send</b>.</div>`;
   await bot(html,700);
   const acts=[["Send it",()=>{add("me","Send it"); confirmSend();}]];
@@ -584,7 +829,7 @@ function render(){
   }
   const a=parseIso(S.start), b=parseIso(S.end), aff=affected(), sug=suggestions(), inc=included();
   const head=`<div class="plan-head"><div class="eyebrow">${S.stage==="sent"?"Time off set":"Time off plan · draft"}</div>
-    <div class="plan-title ${S.flash==="dates"?"flash":""}">${fmt(a,{month:"short",day:"numeric"})} – ${fmt(b,{month:"short",day:"numeric",year:"numeric"})}</div>
+    <div class="plan-title ${S.flash==="dates"?"flash":""}">${S.start===S.end?fmt(a,{weekday:"short",month:"short",day:"numeric",year:"numeric"}):`${fmt(a,{month:"short",day:"numeric"})} – ${fmt(b,{month:"short",day:"numeric",year:"numeric"})}`}</div>
     <div class="dates"><label>First day off<input type="date" id="d-start" value="${S.start}" ${S.stage==="sent"?"disabled":""}></label>
     <label>Last day off<input type="date" id="d-end" value="${S.end}" ${S.stage==="sent"?"disabled":""}></label>
     <span class="daycount">${dayLine(a,b)} · back ${fmt(nextWorkday(b))}</span></div>
